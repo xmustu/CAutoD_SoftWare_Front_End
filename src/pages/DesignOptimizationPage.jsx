@@ -8,6 +8,9 @@ import { Upload } from 'lucide-react';
 import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
 import ProtectedImage from '@/components/ProtectedImage'; // 导入 ProtectedImage 组件
+// import { listenOptimizationSSE } from "@/api/conversationapi";
+// import { getOptimizationQueue } from "@/api/conversationapi";
+import axios from 'axios';
 import {
   Select,
   SelectContent,
@@ -55,18 +58,30 @@ const ConversationSelector = () => {
     </div>
   );
 };
-
-const WorkflowGuide = () => (
-  <div className="text-left max-w-2xl mx-auto bg-green-50 p-4 rounded-lg border border-green-200 mb-8">
-    <h2 className="text-lg font-semibold text-green-800 mb-2">第二步：设计优化</h2>
-    <ol className="list-decimal list-inside text-gray-700 space-y-1">
-      <li>请先在【几何建模】页面完成初始模型的设计和导出。</li>
-      <li>上传您在 SolidWorks 中处理过的 <strong>.sldprt</strong> 文件。</li>
-      <li>点击下方的“开始优化”按钮，系统将对上传的模型进行分析与优化。</li>
-      <li>系统将执行优化，您可以根据结果进行多轮迭代，直到满意为止。</li>
-    </ol>
-  </div>
-);
+const WorkflowGuide = ({ queueLength, runningTasks }) => {
+  return (
+    <div className="text-left max-w-2xl mx-auto bg-green-50 p-4 rounded-lg border border-green-200 mb-8">
+      <h2 className="text-lg font-semibold text-green-800 mb-2">第二步：设计优化</h2>
+      <ol className="list-decimal list-inside text-gray-700 space-y-1">
+        <li>请先在【几何建模】页面完成初始模型的设计和导出。</li>
+        <li>上传您在 SolidWorks 中处理过的 <strong>.sldprt</strong> 文件。</li>
+        <li>点击下方的“开始优化”按钮，系统将对上传的模型进行分析与优化。</li>
+        <li>系统将执行优化，您可以根据结果进行多轮迭代，直到满意为止。</li>
+      </ol>
+      <p className="mt-2 text-sm text-gray-600 text-center">
+        {queueLength === null
+          ? "正在获取当前优化队列信息..."
+          : queueLength === -1
+          ? "获取队列信息失败"
+          : runningTasks > 0
+          ? `当前有 ${runningTasks} 个任务正在执行，队列中还有 ${queueLength} 个任务等待`
+          : queueLength === 0
+          ? "当前没有等待的优化任务"
+          : `当前优化队列中有 ${queueLength} 个任务等待执行`}
+      </p>
+    </div>
+  );
+};
 
 const FileUploadComponent = ({ onFileSelect, onStart, selectedFile, isStreaming, disabled }) => {
   const fileInputRef = React.useRef(null);
@@ -113,12 +128,17 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
   const [extendedParams, setExtendedParams] = useState([]);
   const [checkedParams, setCheckedParams] = useState({});
   const prevParamsRef = React.useRef();
+
+  // 状态，用于保存用户的输入和范围
   const [ranges, setRanges] = useState({});
   const [fixedValues, setFixedValues] = useState({});
 
+  // --- 修复点 1：控制 fixedValues, extendedParams, checkedParams 的初始化 ---
   useEffect(() => {
     const extractedParams = params ? params.filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name)) : [];
     const combinedParams = [...extractedParams];
+
+    // 合并固定参数的定义
     fixedParamsDefinitions.forEach(fixedParam => {
       const existingParam = params ? params.find(p => p.name === fixedParam.name) : undefined;
       if (existingParam) {
@@ -130,35 +150,52 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
 
     setExtendedParams(combinedParams);
 
+    // 只有当 props.params 发生实质性变化时，才重置参数选择和固定值
     if (JSON.stringify(prevParamsRef.current) !== JSON.stringify(params)) {
+      // 重置 checkedParams (通常所有项都应被选中)
       const initialChecked = {};
       combinedParams.forEach(param => {
         initialChecked[param.name] = true;
       });
       setCheckedParams(initialChecked);
-    }
-    prevParamsRef.current = params;
 
-    const initialFixedValues = {};
-    fixedParamsDefinitions.forEach(fixedParam => {
-      initialFixedValues[fixedParam.name] = String(fixedParam.initialValue);
-    });
-    setFixedValues(initialFixedValues);
+      // 🚨 关键修复：仅在此处初始化 fixedValues
+      const initialFixedValues = {};
+      fixedParamsDefinitions.forEach(fixedParam => {
+        // 确保使用 fixedParam.initialValue，因为 fixedParamsDefinitions 是固定值定义
+        initialFixedValues[fixedParam.name] = String(fixedParam.initialValue || '');
+      });
+      setFixedValues(initialFixedValues);
+    }
+
+    prevParamsRef.current = params;
 
   }, [params]);
 
+// ParameterForm.jsx 内部的 useEffect 修复
+// --- 修复点 1：ranges 初始化逻辑 (阻止页面刷新覆盖用户输入) ---
   useEffect(() => {
-    const initialRanges = {};
-    extendedParams.forEach(param => {
-      initialRanges[param.name] = {
-        min: param.min !== undefined && param.min !== null ? param.min : (param.initialValue !== undefined && param.initialValue !== null ? param.initialValue : ''),
-        max: param.max !== undefined && param.max !== null ? param.max : (param.initialValue !== undefined && param.initialValue !== null ? param.initialValue : '')
-      };
-    });
-    setRanges(initialRanges);
+    if (extendedParams.length > 0) {
+      setRanges(currentRanges => {
+        let didChange = false;
+        const newRanges = { ...currentRanges };
+
+        extendedParams.forEach(param => {
+          if (!newRanges[param.name] || newRanges[param.name].min === '' || newRanges[param.name].max === '') {
+            newRanges[param.name] = {
+              min: param.min !== undefined && param.min !== null ? param.min : (param.initialValue !== undefined && param.initialValue !== null ? param.initialValue : ''),
+              max: param.max !== undefined && param.max !== null ? param.max : (param.initialValue !== undefined && param.initialValue !== null ? param.initialValue : '')
+            };
+            didChange = true;
+          }
+        });
+
+        return didChange ? newRanges : currentRanges;
+      });
+    }
   }, [extendedParams]);
 
-  // 新增 useEffect 钩子，用于根据勾选的变量数推荐固定参数的值
+  // --- 修复点 2：固定参数推荐逻辑 (使用函数式更新，确保不覆盖用户的其他输入) ---
   useEffect(() => {
     const optimizableParamNames = extendedParams
       .filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name))
@@ -177,12 +214,22 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
       recommendedGenerations = 50;
     }
 
-    setFixedValues(prev => ({
-      ...prev,
-      population_size: String(recommendedPopulationSize),
-      generations: String(recommendedGenerations),
-    }));
-  }, [checkedParams, extendedParams]); // 依赖 checkedParams 和 extendedParams
+    setFixedValues(prev => {
+      const newGenerations = String(recommendedGenerations);
+      const newPopulationSize = String(recommendedPopulationSize);
+
+      if (prev.generations === newGenerations && prev.population_size === newPopulationSize) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        population_size: newPopulationSize,
+        generations: newGenerations,
+      };
+    });
+
+  }, [checkedParams, extendedParams]);
 
   const [submissionStatus, setSubmissionStatus] = useState('idle');
 
@@ -207,19 +254,16 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
     extendedParams.forEach(param => {
       if (checkedParams[param.name]) {
         if (param.isSelect) {
-          // For select parameters, wrap the single value in 'value' field
           const value = fixedValues[param.name];
           submissionParams[param.name] = {
             value: value,
           };
         } else if (param.isStress) {
-          // For stress parameter, wrap the single value in 'value' field
           const value = parseFloat(fixedValues[param.name]);
           submissionParams[param.name] = {
             value: value,
           };
         } else {
-          // For regular range parameters
           submissionParams[param.name] = {
             min: parseFloat(ranges[param.name]?.min),
             max: parseFloat(ranges[param.name]?.max),
@@ -240,32 +284,29 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
 
   return (
     <div className="w-full mx-auto p-4 border rounded-lg flex flex-col md:flex-row gap-4">
-      {displayedImages.length > 0 && (
-        <div className="flex-shrink-0 w-full md:w-1/2 lg:w-1/3 space-y-2">
-          {displayedImages
-            .filter(image => image.altText === "screenshot") // 只渲染 altText 为 "screenshot" 的图片
-            .slice(-1) // 只取最新的一张图片
-            .map((image, idx) => {
-            console.log("Image altText:", image.altText); // 打印 altText
-            return (
-              <div key={idx} className="border rounded-lg p-2">
-                <ProtectedImage
-                  src={
-                    image.imageUrl.startsWith('http://') || image.imageUrl.startsWith('https://')
-                      ? image.imageUrl
-                      : `${(import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080').replace('/api', '')}${image.imageUrl}`
-                  }
-                  alt={image.altText === "screenshot" ? "screenshot" : (image.altText || 'Generated image')}
-                  className="w-full h-auto rounded cursor-pointer"
-                />
-                <p className="text-sm text-center mt-1">
-                  {image.altText === "screenshot" ? "screenshot" : (image.altText || image.fileName)}
-                </p>
-              </div>
-            );
-          })}
+    {/* ⚠️ 确保显示所有图片，而不是只显示最后一张 */}
+    {displayedImages.length > 0 && (
+     <div className="flex-shrink-0 w-full md:w-1/2 lg:w-1/3 space-y-2">
+    {displayedImages
+      .map((image, idx) => {
+        return (
+          <div key={`${image.imageUrl}-${idx}`} className="border rounded-lg p-2">
+            <ProtectedImage
+              src={image.imageUrl}
+              alt={image.altText}
+              // 🚨 确保图片尺寸合适：将 className 调整为适合小尺寸显示的样式
+              className="w-full h-auto max-h-48 object-contain rounded" 
+            />
+            <p className="text-sm text-center mt-1">
+              {image.altText || image.fileName}
+            </p>
+          </div>
+        );
+      })}
         </div>
       )}
+      {/* ⚠️ 图片渲染部分修改结束 */}
+
       <div className="flex-grow">
         <h3 className="text-lg font-semibold mb-4">设置参数范围</h3>
         <div className="grid grid-cols-[auto_2fr_1fr_1fr] gap-x-4 gap-y-2 mb-2 items-center">
@@ -321,14 +362,14 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
                   <Input
                     type="number"
                     placeholder="下界"
-                    value={ranges[param.name]?.min}
+                    value={ranges[param.name]?.min || ''}
                     onChange={e => handleRangeChange(param.name, 'min', e.target.value)}
                     disabled={isInputDisabled || !checkedParams[param.name]}
                   />
                   <Input
                     type="number"
                     placeholder="上界"
-                    value={ranges[param.name]?.max}
+                    value={ranges[param.name]?.max || ''}
                     onChange={e => handleRangeChange(param.name, 'max', e.target.value)}
                     disabled={isInputDisabled || !checkedParams[param.name]}
                   />
@@ -362,9 +403,59 @@ const DesignOptimizationPage = () => {
   const [optimizableParams, setOptimizableParams] = useState([]);
   const [paramRanges, setParamRanges] = useState({});
   const [uploadedFileUrl, setUploadedFileUrl] = useState(null);
+  const [eventSource, setEventSource] = useState(null);
   const [isSecondRoundCompleted, setIsSecondRoundCompleted] = useState(false);
   const [isQueueDialogOpen, setIsQueueDialogOpen] = useState(false);
-  const [displayedImages, setDisplayedImages] = useState([]); // 新增状态用于存储图片数据
+  const [displayedImages, setDisplayedImages] = useState([]); // ✅ 必须保留，因为它被 handleImagesExtracted 使用
+  const [formScreenshot, setFormScreenshot] = useState([]); // 用于 ParameterForm (只存 screenshot)
+  // const [chatResultImages, setChatResultImages] = useState([]); // 用于 ConversationDisplay (曲线图等)
+  const [queueLength, setQueueLength] = useState(null); // 等待中的任务数
+  const [runningTasks, setRunningTasks] = useState(0); // 运行中的任务数
+  const [queuePosition, setQueuePosition] = useState(null); // <-- 修复 1：添加 queuePosition** 
+  const [currentTaskId, setCurrentTaskId] = useState(null); // <-- 修复 2：添加 currentTaskId**
+// 轮询获取队列长度
+    useEffect(() => {
+    // 默认轮询间隔 (非任务执行期间)
+    const IDLE_POLLING_INTERVAL = 30000; // 30 秒
+    // 任务执行期间的轮询间隔
+    const ACTIVE_POLLING_INTERVAL = 10000; // 10 秒
+    
+    let timeoutId;
+
+    const fetchQueueStatus = async () => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/tasks/optimize/queue_length`);
+            
+            const newQueueLength = res.data.length ?? 0;
+            const newRunningTasks = res.data.running ?? 0;
+            
+            setQueueLength(newQueueLength);
+            setRunningTasks(newRunningTasks);
+            
+            // 根据是否有运行任务决定下一个间隔
+            const nextInterval = (newRunningTasks > 0 || newQueueLength > 0) 
+                                 ? ACTIVE_POLLING_INTERVAL 
+                                 : IDLE_POLLING_INTERVAL;
+            
+            timeoutId = setTimeout(fetchQueueStatus, nextInterval);
+
+        } catch (err) {
+            console.error("获取优化队列长度失败，下次尝试间隔 30 秒:", err);
+            // 失败时，等待较长时间后再试，避免错误时加速轮询
+            timeoutId = setTimeout(fetchQueueStatus, IDLE_POLLING_INTERVAL);
+        }
+    };
+
+    // 首次启动轮询
+    fetchQueueStatus();
+
+    // 清理函数：在组件卸载时清除定时器
+    return () => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    };
+}, []); // 依赖数组为空，让它在组件挂载时始终启动，但其内部会根据队列状态动态调整频率。
 
   // 恢复参数提取逻辑
   useEffect(() => {
@@ -396,38 +487,116 @@ const DesignOptimizationPage = () => {
         }
       }
     }
+
   }, [messages]);
+   
+  // // 打开队列弹窗并获取首次信息
+  // const handleOpenDialog = async (taskId) => {
+  //   if (!taskId) {
+  //     console.warn("⚠️ 未找到任务ID，无法查询队列。");
+  //     return;
+  //   }
+
+  //   setCurrentTaskId(taskId);
+  //   setIsQueueDialogOpen(true);
+
+  //   try {
+  //     const res = await getOptimizationQueue();
+  //     console.log("首次获取队列信息返回:", res);
+
+  //     const taskIdStr = String(currentTaskId);
+  //     const index = res.findIndex((t) => String(t.task_id) === taskIdStr);
+  //     setQueuePosition(index === -1 ? 0 : index); // 不在队列中 => 正在执行
+  //   } catch (err) {
+  //     console.error("获取队列信息失败:", err);
+  //   }
+  // };
+  // // Dialog 打开时轮询队列信息
+  // useEffect(() => {
+  //   if (isQueueDialogOpen && currentTaskId) {
+  //     const fetchQueuePosition = async () => {
+  //       try {
+  //         const res = await getOptimizationQueue();
+  //         console.log("轮询队列信息返回:", res);
+
+  //         if (!Array.isArray(res)) {
+  //           console.warn("⚠️ 接口返回异常:", res);
+  //           setQueuePosition(0);
+  //           return;
+  //         }
+
+  //         const taskIdStr = String(currentTaskId);
+  //         const index = res.findIndex((t) => String(t.task_id) === taskIdStr);
+
+  //         if (res.length === 0) {
+  //           setQueuePosition(0); // 队列空 => 没任务，说明在执行
+  //         } else if (index === -1) {
+  //           console.log("✅ 当前任务不在 pending 队列中 => 执行中");
+  //           setQueuePosition(0);
+  //         } else {
+  //           setQueuePosition(index);
+  //         }
+  //       } catch (err) {
+  //         console.error("获取队列信息失败:", err);
+  //         setQueuePosition(0);
+  //       }
+  //     };
+
+  //     fetchQueuePosition();
+  //     const interval = setInterval(fetchQueuePosition, 5000);
+  //     return () => clearInterval(interval);
+  //   }
+  // }, [isQueueDialogOpen, currentTaskId]);
+
 
   const handleParametersExtracted = useCallback((params) => {
     console.log("DesignOptimizationPage: Parameters extracted from AI message:", params);
     setOptimizableParams(params);
   }, []);
 
-  const handleImagesExtracted = useCallback((images) => {
-    console.log("DesignOptimizationPage: Images extracted from AI message:", images);
-    setDisplayedImages(images); // 更新图片状态
-  }, []);
-
+const handleImagesExtracted = useCallback((images) => {
+    // 1. 筛选出模型截图 (这是唯一需要用于侧边栏的状态)
+    const screenshots = images.filter(img => img.altText === "screenshot");
+    
+    // 2. 更新 ParameterForm 的状态 (只保留最新的截图)
+    //  阻止无限循环：使用防御性检查
+    setFormScreenshot(prev => {
+        const newShot = screenshots.slice(-1);
+        if (JSON.stringify(prev) === JSON.stringify(newShot)) {
+            return prev;
+        }
+        return newShot;
+    }); 
+    //  不再处理曲线图。让 updateLastAiMessage 内部逻辑处理所有其他图片。
+}, []);
   const handleRangesSubmit = async (ranges) => {
-    console.log("Submitted ranges:", ranges);
-    setIsSecondRoundCompleted(false);
+    console.log("Submitted ranges:", ranges);
+    setIsSecondRoundCompleted(false);
 
-    try {
-      await submitOptimizationParamsAPI({
-        conversation_id: activeConversationId,
-        task_id: activeTaskId,
-        params: ranges,
-      });
-      setIsQueueDialogOpen(true); // Open the dialog on success
-    } catch (error) {
-      console.error("Failed to submit optimization parameters:", error);
-      toast.error("提交参数失败，请重试。");
-    }
-  };
+    try {
+      await submitOptimizationParamsAPI({
+        conversation_id: activeConversationId,
+        task_id: activeTaskId,
+        params: ranges,
+      });
+      // 确保 currentTaskId 和弹窗打开 ***
+      setCurrentTaskId(String(activeTaskId)); 
+      
+      // 🚨 核心修改：设置初始排队位置
+      // 如果当前有等待任务，新任务排在队尾 (queueLength + 1)
+      const initialQueuePosition = (queueLength === null || queueLength === 0) ? 0 : queueLength + 1;
+      setQueuePosition(initialQueuePosition); 
+      
+      setIsQueueDialogOpen(true); 
+    } catch (error) {
+      console.error("Failed to submit optimization parameters:", error);
+      toast.error("提交参数失败，请重试。");
+    }
+  };
 
   const handleStartOptimization = async () => {
     if (!selectedFile || isTaskRunning || !activeConversationId) return;
-
+    setFormScreenshot([]);
     setIsTaskRunning(true); // 任务开始，设置为true
     setIsStreaming(true); // 开始流式传输
     const userMessageContent = `已上传文件进行优化: ${selectedFile.name}`;
@@ -477,7 +646,27 @@ const DesignOptimizationPage = () => {
       setIsStreaming(false);
       return;
     }
-    
+    // 插入 SSE 监听逻辑
+    // try {
+    //   // 启动 SSE 监听，并在回调中接收队列更新
+    //   const eventSource = listenOptimizationSSE(
+    //     taskIdToUse,
+    //     (data) => {
+    //       // 普通消息回调（例如优化进度）
+    //       console.log("SSE 数据：", data);
+    //     },
+    //     (pos) => {
+    //       // 这里是我们新增的 “队列位置更新” 回调
+    //       console.log(`✅ 队列位置更新：前方还有 ${pos} 个任务`);
+    //       setQueuePosition(pos);
+    //       setIsQueueDialogOpen(true);
+    //     }
+    //   );
+
+    //   setEventSource(eventSource);
+    // } catch (error) {
+    //   console.error("SSE 连接建立失败:", error);
+    // }
     // 3. 执行任务
     try {
       const requestData = {
@@ -501,6 +690,14 @@ const DesignOptimizationPage = () => {
           message_end: (data) => {
             updateLastAiMessage({ finalData: data });
             setIsStreaming(false); // 流式传输结束
+
+            // // 在消息结束后打印当前图片状态 修改与2025.9.12.18.44
+            // const specialImages = displayedImages.filter(img =>
+            //   img.altText === "收敛曲线" || img.altText === "参数分布图"
+            // );
+            // if (specialImages.length > 0) {
+            //   console.log("message_end后收到特殊图片：", specialImages);
+            // }
             // 在消息结束时提取参数
             if (data.answer && data.metadata && data.metadata.cad_file === "model.step" && data.metadata.code_file === "script.py") {
               console.log("DesignOptimizationPage: message_end received. Full answer content (raw):", JSON.stringify(data.answer)); // 打印完整答案内容（原始字符串）
@@ -568,6 +765,7 @@ const DesignOptimizationPage = () => {
         onClose: () => {
           setIsTaskRunning(false); // 任务完成，设置为false
           setIsStreaming(false);
+          // if (eventSource) eventSource.close(); //  关闭 SSE 连接
         },
       });
 
@@ -585,12 +783,15 @@ const DesignOptimizationPage = () => {
   };
 
   if (messages.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full bg-white pb-40">
-        <div className="w-full max-w-2xl text-center">
-          <h1 className="text-4xl font-bold mb-8">上传文件以开始优化</h1>
-          <WorkflowGuide />
-          <ConversationSelector />
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-white pb-40">
+        <div className="w-full max-w-2xl text-center">
+          <h1 className="text-4xl font-bold mb-8">上传文件以开始优化</h1>
+          <WorkflowGuide 
+            queueLength={queueLength} 
+            runningTasks={runningTasks} 
+          />
+          <ConversationSelector />
           <FileUploadComponent
             onFileSelect={setSelectedFile}
             onStart={handleStartOptimization}
@@ -600,11 +801,24 @@ const DesignOptimizationPage = () => {
           />
         </div>
       </div>
+      
     );
   }
 
   return (
     <>
+      {/* 队列信息显示在最上方 */}
+        <div className="w-full max-w-4xl mx-auto mb-4">
+          <div className="max-w-2xl mx-auto bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+            {queueLength === null
+              ? "正在获取当前优化队列信息..."
+              : runningTasks > 0
+              ? `当前有 ${runningTasks} 个任务正在执行，队列中还有 ${queueLength} 个任务等待`
+              : queueLength === 0
+              ? "当前没有等待的优化任务"
+              : `当前优化队列中有 ${queueLength} 个任务等待执行`}
+          </div>
+      </div>
       <PanelGroup direction="vertical" className="flex flex-col h-full bg-white">
         <Panel>
           <ConversationDisplay 
@@ -614,11 +828,12 @@ const DesignOptimizationPage = () => {
             onImagesExtracted={handleImagesExtracted} // 传递 onImagesExtracted prop
           />
         </Panel>
+        
         <PanelResizeHandle className="h-2 bg-gray-200 hover:bg-gray-300 transition-colors" />
         <Panel
           collapsible={true}
-          defaultSize={optimizableParams.length > 0 || displayedImages.length > 0 ? 50 : 20} // 根据是否有图片或参数调整默认大小
-          minSize={10}
+          defaultSize={optimizableParams.length > 0 || formScreenshot.length > 0 ? 50 : 20} 
+          minSize={10}
         >
           <div className="p-4 border-t bg-gray-50 h-full overflow-y-auto flex flex-col md:flex-row gap-4"> {/* 使用 flex 布局 */}
             <div className="flex-grow"> {/* 参数表单或文件上传区域 */}
@@ -628,7 +843,8 @@ const DesignOptimizationPage = () => {
                   onSubmit={handleRangesSubmit}
                   isStreaming={isStreaming}
                   isSecondRoundCompleted={isSecondRoundCompleted}
-                  displayedImages={displayedImages} // 传递图片数据
+                  // ✅ 修复：传递截图给 ParameterForm
+                  displayedImages={formScreenshot}// 传递图片数据
                 />
               ) : (
                 <FileUploadComponent
@@ -641,9 +857,10 @@ const DesignOptimizationPage = () => {
               )}
             </div>
           </div>
+          
         </Panel>
       </PanelGroup>
-
+      
       <Dialog open={isQueueDialogOpen} onOpenChange={setIsQueueDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -652,7 +869,13 @@ const DesignOptimizationPage = () => {
               参数已提交
             </DialogTitle>
             <DialogDescription>
-              您的参数已成功提交，优化任务已进入后台队列处理。请耐心等待最终结果。
+              {queuePosition === null
+                ? "正在获取队列信息，请稍候..."
+                : queuePosition === 0 && runningTasks > 0
+                ? "当前任务正在执行中。请查看聊天记录。"
+                : queuePosition > 0
+                ? `前方还有 ${queuePosition} 个任务，请耐心等待。`
+                : "任务状态异常或已完成。"}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

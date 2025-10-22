@@ -91,48 +91,63 @@ export const sse = (
       const decoder = new TextDecoder();
       let buffer = "";
 
-      const processText = (text) => {
-        buffer += text;
-        let boundary = buffer.indexOf("\n\n");
-        while (boundary !== -1) {
-          const chunk = buffer.substring(0, boundary);
-          buffer = buffer.substring(boundary + 2);
+const processText = (text) => {
+        buffer += text;
+        let boundary = buffer.indexOf("\n\n");
 
-          let eventName = "message";
-          let data = "";
+        while (boundary !== -1) {
+          const chunk = buffer.substring(0, boundary).trim(); //  改进 1: trim() 移除前后空白
 
-          const lines = chunk.split("\n");
-          for (const line of lines) {
-            if (line.startsWith("event:")) {
-              eventName = line.substring(6).trim();
-            } else if (line.startsWith("data:")) {
-              data = line.substring(5).trim();
-            }
-          }
+          //  改进 2: 移除已处理的块
+          buffer = buffer.substring(boundary + 2); 
 
-          if (eventName && data && onMessage && onMessage[eventName]) {
-            try {
-              const parsedData = JSON.parse(data);
-              // 智能提取数据：如果解析后的对象中有一个与事件名匹配的键，
-              // 则只传递该键的值，否则传递整个对象。
-              // 例如 event: part_chunk, data: {"part": {...}} -> onMessage.part_chunk({...})
-              const eventPayload =
-                parsedData[eventName] !== undefined
-                  ? parsedData[eventName]
-                  : parsedData;
-              onMessage[eventName](eventPayload);
-            } catch (e) {
-              console.error(
-                `Failed to parse SSE message data for event ${eventName}:`,
-                e
-              );
-              // 如果解析失败，尝试将原始数据作为文本传递
-              onMessage[eventName](data);
-            }
-          }
-          boundary = buffer.indexOf("\n\n");
-        }
-      };
+          //  改进 3: 检查是否是空块或注释块。如果为空，直接跳过处理。
+          if (chunk.length === 0 || chunk.startsWith(':')) { 
+            boundary = buffer.indexOf("\n\n");
+            continue; // 跳到下一个循环迭代
+          }
+
+          let eventName = "message";
+          let data = "";
+          let isCompleteMessage = true; // 标记是否为完整 SSE 消息
+
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("event:")) {
+              eventName = line.substring(6).trim();
+            } else if (line.startsWith("data:")) {
+              //  改进 4: 累加 data 行，因为 data 可能跨多行
+              data += line.substring(5).trim();
+            } else if (line.trim().length > 0) {
+              //  改进 5: 捕获非 event/data 的文本，可能是后端调试信息
+              console.warn("SSE 接收到非标准行:", line);
+              isCompleteMessage = false; // 标记此块包含无效内容
+            }
+          }
+
+          //  改进 6: 仅在解析为一个完整的 SSE 消息时才调用 onMessage
+          if (isCompleteMessage && eventName && onMessage && onMessage[eventName]) {
+            try {
+              const parsedData = JSON.parse(data);
+              
+              // 智能提取逻辑保持不变
+              const eventPayload =
+                parsedData[eventName] !== undefined
+                  ? parsedData[eventName]
+                  : parsedData;
+              onMessage[eventName](eventPayload);
+            } catch (e) {
+              console.error(
+                `Failed to parse SSE JSON data for event ${eventName}:`,
+                e, data
+              );
+              // 仅在 JSON 解析失败时传递原始数据，如果 isCompleteMessage=false，则不传递
+              onMessage[eventName](data);
+            }
+          }
+          boundary = buffer.indexOf("\n\n");
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();

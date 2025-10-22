@@ -130,7 +130,7 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
     // 为了简化，我们先假设 /model 接口可以直接访问，或者 model_viewer.html 会自己处理 API 调用
     // 更好的做法是，model_viewer.html 内部调用 getModelFileAPI
     // 但是为了快速实现，我们先传递文件名，让 model_viewer.html 自己处理
-    const backendApiBaseUrl = import.meta.env.VITE_API_URL || ''; // 获取后端API URL
+    const backendApiBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080'; // 获取后端API URL
     const modelUrl = `/model?task_id=${activeTaskId}&conversation_id=${activeConversationId}&file_name=${fileName}`;
     window.open(`/model_viewer.html?modelUrl=${encodeURIComponent(modelUrl)}&backendApiBaseUrl=${encodeURIComponent(backendApiBaseUrl)}`, '_blank');
   };
@@ -210,17 +210,16 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
 
   const partsToRender = parts?.filter(p => p.type === 'part') || [];
   const imagesToDisplay = parts?.filter(p => p.type === 'image') || [];
+// 核心修复 1：将图片分流逻辑移到父组件 (DesignOptimizationPage)
+    //    这里只负责将图片数据传递给父组件，由父组件决定分流和状态更新。
+    useEffect(() => {
+        if (imagesToDisplay.length > 0 && onImagesExtracted) {
+            onImagesExtracted(imagesToDisplay); // 传递所有图片数据给父组件
+        }
+    }, [imagesToDisplay, onImagesExtracted]);
 
-  useEffect(() => {
-    console.log("AiMessage: imagesToDisplay (in useEffect):", imagesToDisplay); // 调整控制台打印位置
-    if (imagesToDisplay.length > 0 && onImagesExtracted) {
-      onImagesExtracted(imagesToDisplay); // 将图片数据传递给父组件
-    }
-  }, [imagesToDisplay, onImagesExtracted]);
-
-  // Use the new task_type property for a reliable check
-  const isOptimizationLog = message.task_type === 'optimize' || (content && (content.includes('开始优化') || content.includes('发送参数')));
-
+    // Use the new task_type property for a reliable check
+    const isOptimizationLog = message.task_type === 'optimize' || (content && (content.includes('开始优化') || content.includes('发送参数')));
   // 移除参数提取逻辑，现在由 DesignOptimizationPage 处理
   // useEffect(() => {
   //   if (isOptimizationLog && content && onParametersExtracted) {
@@ -320,7 +319,24 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
             </div>
           )}
         </div>
-
+        {/* 2. 🚨 核心修复 3：在最终结果后插入曲线图 (只渲染曲线图) */}
+                {imagesToDisplay.length > 0 && (
+                    <div className="mt-4 pt-2 space-y-4">
+                        {imagesToDisplay
+                            .filter(img => img.altText === "收敛曲线" || img.altText === "参数分布图")
+                            .map((image, idx) => (
+                                // 使用稍微大一点的卡片样式来显示曲线图，而不是 ParameterForm 中的小图
+                                <Card key={idx} className="p-2">
+                                    <ProtectedImage
+                                        src={image.imageUrl}
+                                        alt={image.altText}
+                                        className="w-full h-auto object-contain rounded"
+                                    />
+                                    <p className="text-center text-sm font-semibold mt-2">{image.altText}</p>
+                                </Card>
+                            ))}
+                    </div>
+                )}
         {partsToRender && partsToRender.length > 0 && (
           <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
             {partsToRender.map((part, idx) => (

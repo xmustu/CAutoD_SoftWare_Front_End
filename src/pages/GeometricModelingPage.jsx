@@ -132,6 +132,7 @@ const GeometricModelingPage = () => {
         },
         message_end: (data) => {
           updateLastAiMessage({ finalData: data });
+          //updateLastAiMessage({ status: "done" }); // 只标记结束 修改于 2025.9.12.10.15
         },
       },
       onError: (error) => {

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const ModelViewer = ({ modelData }) => {
+const ModelViewer = ({ modelUrl, backendApiBaseUrl }) => {
   const containerRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
   const sceneRef = useRef(null);
@@ -12,13 +12,32 @@ const ModelViewer = ({ modelData }) => {
   const controlsRef = useRef(null);
 
   // 加载模型函数
-  const loadModel = useCallback((data) => { // 使用 useCallback 包装
+  const loadModel = useCallback(async (url, baseUrl) => {
     setIsLoading(true);
     try {
-      const loader = new STLLoader();
-      const geometry = loader.parse(data);
+      const fullModelUrl = `${baseUrl}${url}`;
+      const token = localStorage.getItem("token");
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-      // 清除现有模型（保留光源）
+      const response = await fetch(fullModelUrl, {
+        method: 'GET',
+        headers: headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const loader = new STLLoader();
+      const geometry = loader.parse(arrayBuffer);
+
+      // 清除现有模型
       if (sceneRef.current) {
         const objectsToRemove = sceneRef.current.children.filter(
           (child) => child instanceof THREE.Mesh
@@ -26,7 +45,6 @@ const ModelViewer = ({ modelData }) => {
         objectsToRemove.forEach((child) => sceneRef.current.remove(child));
       }
 
-      // 创建材质和网格
       const material = new THREE.MeshPhongMaterial({
         color: 0x0070f3,
         shininess: 100,
@@ -34,64 +52,55 @@ const ModelViewer = ({ modelData }) => {
       });
       const mesh = new THREE.Mesh(geometry, material);
 
-      // 模型居中处理
       geometry.computeBoundingBox();
       const center = new THREE.Vector3();
       geometry.boundingBox.getCenter(center);
       mesh.position.sub(center);
 
-      // 模型缩放处理
       const size = new THREE.Vector3();
       geometry.boundingBox.getSize(size);
       const maxDim = Math.max(size.x, size.y, size.z);
       const scale = 10 / maxDim;
       mesh.scale.set(scale, scale, scale);
 
-      // 添加到场景
       if (sceneRef.current) {
         sceneRef.current.add(mesh);
       }
 
-      // 调整相机位置
       if (cameraRef.current) {
         cameraRef.current.position.z = 20;
       }
 
       setIsLoading(false);
     } catch (error) {
-      console.error('模型解析错误:', error);
+      console.error('模型加载或解析错误:', error);
       setIsLoading(false);
     }
-  }, []); // 添加依赖数组，确保 loadModel 只在组件挂载时创建一次
+  }, []);
 
-  // 初始化Three.js场景、相机、渲染器和控制器
+  // 初始化Three.js场景
   useEffect(() => {
     if (!containerRef.current) return;
 
     const container = containerRef.current;
-
-    // 创建场景
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf0f0f0);
     sceneRef.current = scene;
 
-    // 创建相机
     const camera = new THREE.PerspectiveCamera(
       75,
       container.clientWidth / container.clientHeight,
       0.1,
       1000
     );
-    camera.position.z = 20; // 初始相机位置
+    camera.position.z = 20;
     cameraRef.current = camera;
 
-    // 创建渲染器
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 添加光源
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
@@ -99,12 +108,10 @@ const ModelViewer = ({ modelData }) => {
     directionalLight.position.set(10, 10, 10);
     scene.add(directionalLight);
 
-    // 添加控制器
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controlsRef.current = controls;
 
-    // 动画循环
     const animate = () => {
       requestAnimationFrame(animate);
       controls.update();
@@ -112,7 +119,6 @@ const ModelViewer = ({ modelData }) => {
     };
     animate();
 
-    // 窗口大小调整处理
     const handleResize = () => {
       if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
       
@@ -127,21 +133,20 @@ const ModelViewer = ({ modelData }) => {
 
     window.addEventListener('resize', handleResize);
 
-    // 清理函数
     return () => {
       window.removeEventListener('resize', handleResize);
       if (containerRef.current && rendererRef.current) {
         containerRef.current.removeChild(rendererRef.current.domElement);
       }
     };
-  }, []); // 空依赖数组，只运行一次
+  }, []);
 
-  // 当 modelData 变化时加载模型
+  // 当 modelUrl 或 backendApiBaseUrl 变化时加载模型
   useEffect(() => {
-    if (modelData && sceneRef.current && cameraRef.current && rendererRef.current) {
-      loadModel(modelData);
+    if (modelUrl && backendApiBaseUrl) {
+      loadModel(modelUrl, backendApiBaseUrl);
     }
-  }, [modelData, loadModel]); // 依赖 modelData 和 loadModel
+  }, [modelUrl, backendApiBaseUrl, loadModel]);
 
   return (
     <div className="relative w-full h-96">

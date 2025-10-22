@@ -80,3 +80,61 @@ export const deleteHistoryAPI = (taskId) => {
 export const deleteConversationAPI = (conversationId) => {
   return del(`/conversation/${conversationId}`);
 };
+
+/**
+ * 建立 SSE 监听，用于接收后端优化/对话任务的实时推送
+ * @param {string} taskId - 任务ID
+ * @param {function} onMessage - 处理后端推送数据的回调函数
+ * @returns {EventSource} - SSE 连接实例
+ */
+// export const listenOptimizationSSE = (taskId, onMessage, onQueueUpdate) => {
+//   const token = localStorage.getItem("token");
+//   const url = `${import.meta.env.VITE_API_URL}/tasks/optimize/progress/${taskId}?token=${token}`;
+//   const eventSource = new EventSource(url);
+
+//   eventSource.onmessage = (event) => {
+//     try {
+//       // 解析正常 SSE 数据
+//       const data = JSON.parse(event.data);
+//       onMessage(data);
+
+//       // 如果消息中含有队列信息，则提取
+//       if (typeof data.text === "string" && data.text.includes("Position:")) {
+//         const match = data.text.match(/Position:\s*(\d+)/);
+//         if (match) {
+//           const position = parseInt(match[1], 10);
+//           onQueueUpdate?.(position);
+//         }
+//       }
+//     } catch (err) {
+//       // 捕获非JSON格式（如 text_chunk）并尝试提取队列信息
+//       if (event.data.includes("Position:")) {
+//         const match = event.data.match(/Position:\s*(\d+)/);
+//         if (match) {
+//           const position = parseInt(match[1], 10);
+//           onQueueUpdate?.(position);
+//         }
+//       } else {
+//         console.warn("SSE 数据解析失败:", err);
+//       }
+//     }
+//   };
+
+//   eventSource.onerror = (err) => {
+//     console.error("SSE 连接出错:", err);
+//     eventSource.close();
+//   };
+
+//   return eventSource;
+// };
+
+// // 获取任务队列位置
+// export async function getOptimizationQueue() {
+//   const res = await fetch(`${import.meta.env.VITE_API_URL}/tasks/pending`);
+//   if (!res.ok) throw new Error("获取队列失败");
+//   const data = await res.json();
+//   console.log("获取队列结果:", data);
+//   return data; // 返回数组
+// }
+
+
