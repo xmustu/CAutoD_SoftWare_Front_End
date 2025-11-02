@@ -1,5 +1,6 @@
 # 构建阶段
-FROM node:20-alpine AS build-stage
+# FROM node:20-alpine AS build-stage
+FROM docker.io/library/node:20-alpine AS build-stage
 WORKDIR /app
 COPY package*.json ./
 RUN npm install

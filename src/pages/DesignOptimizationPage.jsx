@@ -128,7 +128,16 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
   const [extendedParams, setExtendedParams] = useState([]);
   const [checkedParams, setCheckedParams] = useState({});
   const prevParamsRef = React.useRef();
-
+  // 【新增状态】用于图片放大预览
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState(''); 
+  const [previewImageAlt, setPreviewImageAlt] = useState('');
+  // 图片点击处理器
+  const handleImageClick = (url, alt) => {
+      setPreviewImageUrl(url);
+      setPreviewImageAlt(alt);
+      setIsImagePreviewOpen(true);
+  };
   // 状态，用于保存用户的输入和范围
   const [ranges, setRanges] = useState({});
   const [fixedValues, setFixedValues] = useState({});
@@ -284,25 +293,25 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
 
   return (
     <div className="w-full mx-auto p-4 border rounded-lg flex flex-col md:flex-row gap-4">
-    {/* ⚠️ 确保显示所有图片，而不是只显示最后一张 */}
-    {displayedImages.length > 0 && (
-     <div className="flex-shrink-0 w-full md:w-1/2 lg:w-1/3 space-y-2">
-    {displayedImages
-      .map((image, idx) => {
-        return (
-          <div key={`${image.imageUrl}-${idx}`} className="border rounded-lg p-2">
-            <ProtectedImage
-              src={image.imageUrl}
-              alt={image.altText}
-              // 🚨 确保图片尺寸合适：将 className 调整为适合小尺寸显示的样式
-              className="w-full h-auto max-h-48 object-contain rounded" 
-            />
-            <p className="text-sm text-center mt-1">
-              {image.altText || image.fileName}
-            </p>
-          </div>
-        );
-      })}
+      {/* 渲染图片的部分 */}
+      {displayedImages.length > 0 && (
+        <div className="flex-shrink-0 w-full md:w-1/2 lg:w-1/3 space-y-2">
+          {displayedImages.map((image, idx) => {
+            return (
+              <div key={`${image.imageUrl}-${idx}`} className="border rounded-lg p-2">
+                <ProtectedImage
+                  src={image.imageUrl}
+                  alt={image.altText}
+                  className="w-full h-auto max-h-48 object-contain rounded cursor-pointer" // <-- 添加 cursor-pointer
+                  // 💥 绑定点击事件 💥
+                  onClick={() => handleImageClick(image.imageUrl, image.altText)} 
+                />
+                <p className="text-sm text-center mt-1">
+                  {image.altText || image.fileName}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
       {/* ⚠️ 图片渲染部分修改结束 */}
@@ -382,6 +391,23 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
           提交范围并继续进行优化
         </Button>
       </div>
+      {/* 💥 添加 Dialog 组件用于图片预览 💥 */}
+      <Dialog open={isImagePreviewOpen} onOpenChange={setIsImagePreviewOpen}>
+        <DialogContent className="max-w-screen-xl p-4 sm:max-w-5xl md:max-w-6xl"> 
+          <DialogHeader className="p-0">
+            <DialogTitle>{previewImageAlt || "模型截图预览"}</DialogTitle>
+          </DialogHeader>
+          <div className="w-full max-h-[85vh] overflow-y-auto flex justify-center items-center">
+            {previewImageUrl && (
+              <ProtectedImage
+                src={previewImageUrl}
+                alt={previewImageAlt}
+                className="max-w-full max-h-[80vh] object-contain rounded"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
