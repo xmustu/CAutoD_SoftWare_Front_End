@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, Bell, ChevronDown, Plus, MessageSquare, Search, Settings2, Code, User, Clock, ListChecks } from 'lucide-react';
+import { LogOut, Settings, Bell, ChevronDown, Plus, MessageSquare, Search, Settings2, Code, User, Clock, ListChecks, Shield } from 'lucide-react';
 import useUserStore from '../store/userStore';
 import TaskQueue from '@/components/TaskQueue';
 import useConversationStore from '../store/conversationStore';
@@ -58,6 +58,13 @@ const Sidebar = () => {
         <NavItem to="/design-optimization" icon={Settings2} text="设计优化" onClick={startNewConversation} />
         <NavItem to="/software-interface" icon={Code} text="软件界面" onClick={startNewConversation} />
         <NavItem to="/tasks" icon={ListChecks} text="任务列表" onClick={() => setActiveConversationId(null)} />
+        
+        {/* 管理员入口 */}
+        {user?.role === 'admin' && (
+          <div className="mt-4 pt-4 border-t border-blue-700">
+            <NavItem to="/admin" icon={Shield} text="管理员面板" onClick={() => setActiveConversationId(null)} />
+          </div>
+        )}
       </nav>
       <div className="mt-auto">
         <div className="mb-4">
