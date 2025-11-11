@@ -15,10 +15,15 @@ export const loginAPI = (data) => {
 /**
  * 用户注册
  * 功能描述：创建新用户
- * 入参：{ username, email, pwd }
- * 返回参数：重定向或错误信息
+ * 入参：{ username, email, password } - JSON格式
+ * 返回参数：{ status, user_id, email }
  * url地址：/user/register
  * 请求方式：POST
+ * 
+ * 验证规则:
+ * - 用户名: 3-50字符, 支持字母/数字/下划线/中文, 不允许纯数字和保留名
+ * - 邮箱: 标准邮箱格式验证
+ * - 密码: 6-128字符
  */
 export const registerAPI = (data) => {
   return post("/user/register", data);

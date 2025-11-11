@@ -55,12 +55,16 @@ const useUserStore = create(
       register: async (userData) => {
         set({ loading: true, error: null });
         try {
-          // 假设 registerAPI 存在于 authAPI.js 中
+          // registerAPI 接收 JSON 格式: { username, email, password }
           const response = await registerAPI(userData);
           set({ loading: false });
           return response;
         } catch (error) {
-          set({ error: error.message, loading: false });
+          const errorMessage = error.response?.data?.detail?.message 
+            || error.response?.data?.detail 
+            || error.message 
+            || '注册失败';
+          set({ error: errorMessage, loading: false });
           throw error;
         }
       },

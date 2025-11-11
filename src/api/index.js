@@ -125,31 +125,38 @@ const processText = (text) => {
             }
           }
 
-          //  改进 6: 仅在解析为一个完整的 SSE 消息时才调用 onMessage
-          if (isCompleteMessage && eventName && onMessage && onMessage[eventName]) {
-            try {
-              const parsedData = JSON.parse(data);
-              
-              // 智能提取逻辑保持不变
-              const eventPayload =
-                parsedData[eventName] !== undefined
-                  ? parsedData[eventName]
-                  : parsedData;
-              onMessage[eventName](eventPayload);
-            } catch (e) {
-              console.error(
-                `Failed to parse SSE JSON data for event ${eventName}:`,
-                e, data
-              );
-              // 仅在 JSON 解析失败时传递原始数据，如果 isCompleteMessage=false，则不传递
-              onMessage[eventName](data);
-            }
-          }
-          boundary = buffer.indexOf("\n\n");
-        }
-      };
-
-      while (true) {
+          //  改进 6: 仅在解析为一个完整的 SSE 消息时才调用 onMessage
+          if (isCompleteMessage && eventName && onMessage && onMessage[eventName]) {
+            try {
+              const parsedData = JSON.parse(data);
+              
+              // 💥 添加详细日志
+              console.log("📡 SSE 解析成功:");
+              console.log("  - eventName:", eventName);
+              console.log("  - parsedData:", parsedData);
+              
+              // 智能提取逻辑保持不变
+              const eventPayload =
+                parsedData[eventName] !== undefined
+                  ? parsedData[eventName]
+                  : parsedData;
+              
+              console.log("  - eventPayload:", eventPayload);
+              console.log("  - 调用回调: onMessage[" + eventName + "]");
+              
+              onMessage[eventName](eventPayload);
+            } catch (e) {
+              console.error(
+                `Failed to parse SSE JSON data for event ${eventName}:`,
+                e, data
+              );
+              // 仅在 JSON 解析失败时传递原始数据，如果 isCompleteMessage=false，则不传递
+              onMessage[eventName](data);
+            }
+          }
+          boundary = buffer.indexOf("\n\n");
+        }
+      };      while (true) {
         const { done, value } = await reader.read();
         if (done) {
           if (onClose) onClose();

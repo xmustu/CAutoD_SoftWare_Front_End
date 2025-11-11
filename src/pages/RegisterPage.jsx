@@ -3,6 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import useUserStore from '../store/userStore';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { 
+  validateUsername, 
+  validatePassword, 
+  validateEmail,
+  calculatePasswordStrength,
+  getPasswordStrengthInfo 
+} from '../utils/validationRules';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -14,41 +21,135 @@ const RegisterPage = () => {
     confirmPassword: ''
   });
   const [loading, setLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [passwordStrength, setPasswordStrength] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+    
+    // 实时验证
+    const errors = { ...validationErrors };
+    
+    if (name === 'username') {
+      const usernameError = validateUsername(value);
+      if (usernameError) {
+        errors.username = usernameError;
+      } else {
+        delete errors.username;
+      }
+    }
+    
+    if (name === 'email') {
+      const emailError = validateEmail(value);
+      if (emailError && value.length > 0) {
+        errors.email = emailError;
+      } else {
+        delete errors.email;
+      }
+    }
+    
+    if (name === 'password') {
+      const passwordError = validatePassword(value);
+      if (passwordError) {
+        errors.password = passwordError;
+      } else {
+        delete errors.password;
+      }
+      setPasswordStrength(calculatePasswordStrength(value));
+      
+      // 检查密码确认匹配
+      if (formData.confirmPassword && value !== formData.confirmPassword) {
+        errors.confirmPassword = '两次输入的密码不匹配';
+      } else {
+        delete errors.confirmPassword;
+      }
+    }
+    
+    if (name === 'confirmPassword') {
+      if (value !== formData.password) {
+        errors.confirmPassword = '两次输入的密码不匹配';
+      } else {
+        delete errors.confirmPassword;
+      }
+    }
+    
+    setValidationErrors(errors);
     if (error) clearError();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // 前端验证
+    const errors = {};
+    const usernameError = validateUsername(formData.username);
+    const emailError = validateEmail(formData.email);
+    const passwordError = validatePassword(formData.password);
+    
+    if (usernameError) errors.username = usernameError;
+    if (emailError) errors.email = emailError;
+    if (passwordError) errors.password = passwordError;
     if (formData.password !== formData.confirmPassword) {
-      alert("密码不匹配！");
+      errors.confirmPassword = '两次输入的密码不匹配';
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
       return;
     }
-    if (!formData.username.trim()) {
-      alert("用户名不能为空！");
-      return;
-    }
+    
     setLoading(true);
+    setValidationErrors({});
     
     try {
-      const data = new FormData();
-      data.append('username', formData.username);
-      data.append('email', formData.email);
-      data.append('pwd', formData.password);
+      // 发送JSON格式数据
+      const requestData = {
+        username: formData.username.trim(),
+        email: formData.email.toLowerCase(),
+        password: formData.password
+      };
 
-      await register(data);
+      await register(requestData);
       alert("注册成功！即将跳转到登录页面。");
       navigate('/login');
     } catch (err) {
       console.error('注册失败:', err);
-      alert(`注册失败: ${err.message}`);
+      
+      // 处理后端返回的详细错误
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        
+        // 处理字段级错误
+        if (detail.field) {
+          setValidationErrors({ [detail.field]: detail.message });
+        } 
+        // 处理验证错误数组
+        else if (Array.isArray(detail)) {
+          const newErrors = {};
+          detail.forEach(error => {
+            const field = error.loc?.[error.loc.length - 1];
+            if (field) {
+              newErrors[field] = error.msg;
+            }
+          });
+          setValidationErrors(newErrors);
+        }
+        // 处理普通错误消息
+        else if (typeof detail === 'string') {
+          alert(`注册失败: ${detail}`);
+        } else if (detail.message) {
+          alert(`注册失败: ${detail.message}`);
+        }
+      } else {
+        alert(`注册失败: ${err.message || '未知错误'}`);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const strengthInfo = getPasswordStrengthInfo(passwordStrength);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -59,6 +160,7 @@ const RegisterPage = () => {
           <p className="text-center text-gray-500 mb-6">创建你的新账户</p>
 
           <form onSubmit={handleSubmit}>
+            {/* 用户名 */}
             <div className="mb-4">
               <label className="block text-gray-700 mb-2" htmlFor="username">
                 用户名 <span className="text-red-500">*</span>
@@ -67,12 +169,21 @@ const RegisterPage = () => {
                 id="username"
                 name="username"
                 type="text"
-                placeholder="Enter your username"
+                placeholder="3-50个字符，支持字母/数字/下划线/中文"
                 value={formData.username}
                 onChange={handleChange}
+                className={validationErrors.username ? 'border-red-500' : ''}
                 required
               />
+              {validationErrors.username && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.username}</p>
+              )}
+              <p className="text-gray-500 text-xs mt-1">
+                不允许纯数字和保留名(admin, root等)
+              </p>
             </div>
+
+            {/* 邮箱 */}
             <div className="mb-4">
               <label className="block text-gray-700 mb-2" htmlFor="email">
                 邮箱 <span className="text-red-500">*</span>
@@ -84,11 +195,16 @@ const RegisterPage = () => {
                 placeholder="your@email.com"
                 value={formData.email}
                 onChange={handleChange}
+                className={validationErrors.email ? 'border-red-500' : ''}
                 required
               />
+              {validationErrors.email && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.email}</p>
+              )}
             </div>
             
-            <div className="mb-6">
+            {/* 密码 */}
+            <div className="mb-4">
               <label className="block text-gray-700 mb-2" htmlFor="password">
                 密码 <span className="text-red-500">*</span>
               </label>
@@ -96,13 +212,38 @@ const RegisterPage = () => {
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Min. 8 characters"
+                placeholder="至少6个字符"
                 value={formData.password}
                 onChange={handleChange}
+                className={validationErrors.password ? 'border-red-500' : ''}
                 required
               />
+              {validationErrors.password && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.password}</p>
+              )}
+              
+              {/* 密码强度指示器 */}
+              {formData.password && !validationErrors.password && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${strengthInfo.color}`}
+                        style={{ width: strengthInfo.width }}
+                      />
+                    </div>
+                    <span className={`text-xs font-medium ${strengthInfo.textColor}`}>
+                      {strengthInfo.text}
+                    </span>
+                  </div>
+                  <p className="text-gray-500 text-xs mt-1">
+                    建议: 8位以上，包含大小写字母、数字和特殊字符
+                  </p>
+                </div>
+              )}
             </div>
 
+            {/* 确认密码 */}
             <div className="mb-6">
               <label className="block text-gray-700 mb-2" htmlFor="confirmPassword">
                 确认密码 <span className="text-red-500">*</span>
@@ -111,14 +252,22 @@ const RegisterPage = () => {
                 id="confirmPassword"
                 name="confirmPassword"
                 type="password"
-                placeholder="Confirm your password"
+                placeholder="再次输入密码"
                 value={formData.confirmPassword}
                 onChange={handleChange}
+                className={validationErrors.confirmPassword ? 'border-red-500' : ''}
                 required
               />
+              {validationErrors.confirmPassword && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.confirmPassword}</p>
+              )}
             </div>
             
-            <Button type="submit" disabled={loading} className="w-full bg-pink-600 text-white hover:bg-pink-700">
+            <Button 
+              type="submit" 
+              disabled={loading || Object.keys(validationErrors).length > 0} 
+              className="w-full bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {loading ? '注册中...' : '注册'}
             </Button>
           </form>
