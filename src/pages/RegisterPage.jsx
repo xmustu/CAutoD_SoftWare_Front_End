@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import useUserStore from '../store/userStore';
 import { Button } from "@/components/ui/button";
@@ -13,16 +13,25 @@ import {
 
 const RegisterPage = () => {
   const navigate = useNavigate();
-  const { register, error, clearError } = useUserStore();
+  const { register, sendRegisterCode, error, clearError } = useUserStore();
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    verificationCode: ''
   });
   const [loading, setLoading] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeCountdown, setCodeCountdown] = useState(0);
   const [validationErrors, setValidationErrors] = useState({});
   const [passwordStrength, setPasswordStrength] = useState('');
+
+  useEffect(() => {
+    if (codeCountdown <= 0) return;
+    const timer = setTimeout(() => setCodeCountdown((prev) => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [codeCountdown]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -73,9 +82,45 @@ const RegisterPage = () => {
         delete errors.confirmPassword;
       }
     }
+
+    if (name === 'verificationCode') {
+      if (value && !/^\d{4,6}$/.test(value)) {
+        errors.verificationCode = '验证码需为4-6位数字';
+      } else {
+        delete errors.verificationCode;
+      }
+    }
     
     setValidationErrors(errors);
     if (error) clearError();
+  };
+
+  const handleSendCode = async () => {
+    const emailError = validateEmail(formData.email);
+    if (emailError) {
+      setValidationErrors((prev) => ({ ...prev, email: emailError }));
+      return;
+    }
+    if (codeCountdown > 0) {
+      return;
+    }
+    setCodeLoading(true);
+    try {
+      const res = await sendRegisterCode({ email: formData.email.toLowerCase() });
+      const message = res?.message || '请求已发送。';
+      alert(message);
+      if (!message.toLowerCase().includes('disabled')) {
+        setCodeCountdown(60);
+      }
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.message ||
+        '验证码发送失败，请稍后重试';
+      alert(message);
+    } finally {
+      setCodeLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -93,6 +138,9 @@ const RegisterPage = () => {
     if (formData.password !== formData.confirmPassword) {
       errors.confirmPassword = '两次输入的密码不匹配';
     }
+    if (formData.verificationCode && !/^\d{4,6}$/.test(formData.verificationCode)) {
+      errors.verificationCode = '验证码需为4-6位数字';
+    }
     
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
@@ -107,7 +155,8 @@ const RegisterPage = () => {
       const requestData = {
         username: formData.username.trim(),
         email: formData.email.toLowerCase(),
-        password: formData.password
+        password: formData.password,
+        verification_code: formData.verificationCode.trim(),
       };
 
       await register(requestData);
@@ -188,19 +237,52 @@ const RegisterPage = () => {
               <label className="block text-gray-700 mb-2" htmlFor="email">
                 邮箱 <span className="text-red-500">*</span>
               </label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="your@email.com"
-                value={formData.email}
-                onChange={handleChange}
-                className={validationErrors.email ? 'border-red-500' : ''}
-                required
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className={validationErrors.email ? 'border-red-500' : ''}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSendCode}
+                  disabled={codeLoading || codeCountdown > 0}
+                  className="whitespace-nowrap"
+                >
+                  {codeCountdown > 0 ? `重新发送(${codeCountdown}s)` : codeLoading ? '发送中...' : '获取验证码'}
+                </Button>
+              </div>
               {validationErrors.email && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.email}</p>
               )}
+            </div>
+            
+            {/* 验证码 */}
+            <div className="mb-4">
+              <label className="block text-gray-700 mb-2" htmlFor="verificationCode">
+                验证码
+              </label>
+              <Input
+                id="verificationCode"
+                name="verificationCode"
+                type="text"
+                placeholder="输入邮箱收到的4-6位数字验证码"
+                value={formData.verificationCode}
+                onChange={handleChange}
+                className={validationErrors.verificationCode ? 'border-red-500' : ''}
+              />
+              {validationErrors.verificationCode && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.verificationCode}</p>
+              )}
+              <p className="text-gray-500 text-xs mt-1">
+                如果未启用邮件功能，可留空直接注册。
+              </p>
             </div>
             
             {/* 密码 */}

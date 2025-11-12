@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { loginAPI, registerAPI, getProfileAPI } from "../api/authAPI";
+import {
+  loginAPI,
+  getProfileAPI,
+  sendRegisterCodeAPI,
+  registerWithCodeAPI,
+} from "../api/authAPI";
 
 // 用户状态管理
 const useUserStore = create(
@@ -55,8 +60,7 @@ const useUserStore = create(
       register: async (userData) => {
         set({ loading: true, error: null });
         try {
-          // registerAPI 接收 JSON 格式: { username, email, password }
-          const response = await registerAPI(userData);
+          const response = await registerWithCodeAPI(userData);
           set({ loading: false });
           return response;
         } catch (error) {
@@ -65,6 +69,19 @@ const useUserStore = create(
             || error.message 
             || '注册失败';
           set({ error: errorMessage, loading: false });
+          throw error;
+        }
+      },
+
+      sendRegisterCode: async (payload) => {
+        try {
+          set({ error: null });
+          return await sendRegisterCodeAPI(payload);
+        } catch (error) {
+          const errorMessage = error.response?.data?.detail
+            || error.message
+            || "验证码发送失败";
+          set({ error: errorMessage });
           throw error;
         }
       },

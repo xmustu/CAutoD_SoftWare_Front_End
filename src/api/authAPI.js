@@ -30,6 +30,30 @@ export const registerAPI = (data) => {
 };
 
 /**
+ * 发送注册验证码
+ * 功能描述：向用户邮箱发送注册验证码
+ * 入参：{ email }
+ * 返回参数：{ message }
+ * url地址：/user/register/email/send-code
+ * 请求方式：POST
+ */
+export const sendRegisterCodeAPI = (data) => {
+  return post("/user/register/email/send-code", data);
+};
+
+/**
+ * 带验证码注册用户
+ * 功能描述：使用邮箱验证码创建新用户
+ * 入参：{ username, email, password, verification_code }
+ * 返回参数：{ message }
+ * url地址：/user/register/email
+ * 请求方式：POST
+ */
+export const registerWithCodeAPI = (data) => {
+  return post("/user/register/email", data);
+};
+
+/**
  * Google登录
  * 功能描述：使用Google进行用户登录
  * 入参：{ token }
