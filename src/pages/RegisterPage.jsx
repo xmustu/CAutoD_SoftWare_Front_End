@@ -295,6 +295,7 @@ const RegisterPage = () => {
                 name="password"
                 type="password"
                 placeholder="至少6个字符"
+                autoComplete="new-password"
                 value={formData.password}
                 onChange={handleChange}
                 className={validationErrors.password ? 'border-red-500' : ''}
@@ -335,6 +336,7 @@ const RegisterPage = () => {
                 name="confirmPassword"
                 type="password"
                 placeholder="再次输入密码"
+                autoComplete="new-password"
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 className={validationErrors.confirmPassword ? 'border-red-500' : ''}

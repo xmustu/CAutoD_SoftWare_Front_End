@@ -5,6 +5,8 @@ import {
   getProfileAPI,
   sendRegisterCodeAPI,
   registerWithCodeAPI,
+  sendPasswordResetCodeAPI,
+  resetPasswordWithCodeAPI,
 } from "../api/authAPI";
 
 // 用户状态管理
@@ -82,6 +84,34 @@ const useUserStore = create(
             || error.message
             || "验证码发送失败";
           set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      sendPasswordResetCode: async (payload) => {
+        try {
+          set({ error: null });
+          return await sendPasswordResetCodeAPI(payload);
+        } catch (error) {
+          const errorMessage = error.response?.data?.detail
+            || error.message
+            || "重置验证码发送失败";
+          set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      resetPasswordWithCode: async (payload) => {
+        set({ loading: true, error: null });
+        try {
+          const response = await resetPasswordWithCodeAPI(payload);
+          set({ loading: false });
+          return response;
+        } catch (error) {
+          const errorMessage = error.response?.data?.detail
+            || error.message
+            || "密码重置失败";
+          set({ error: errorMessage, loading: false });
           throw error;
         }
       },

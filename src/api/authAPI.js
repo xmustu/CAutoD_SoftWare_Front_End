@@ -54,6 +54,30 @@ export const registerWithCodeAPI = (data) => {
 };
 
 /**
+ * 发送密码重置验证码
+ * 功能描述：向用户邮箱发送密码重置验证码
+ * 入参：{ email }
+ * 返回参数：{ message }
+ * url地址：/user/password-recovery/code
+ * 请求方式：POST
+ */
+export const sendPasswordResetCodeAPI = (data) => {
+  return post("/user/password-recovery/code", data);
+};
+
+/**
+ * 使用验证码重置密码
+ * 功能描述：验证验证码并重置密码
+ * 入参：{ email, verification_code, new_password }
+ * 返回参数：{ message }
+ * url地址：/user/reset-password/code
+ * 请求方式：POST
+ */
+export const resetPasswordWithCodeAPI = (data) => {
+  return post("/user/reset-password/code", data);
+};
+
+/**
  * Google登录
  * 功能描述：使用Google进行用户登录
  * 入参：{ token }
