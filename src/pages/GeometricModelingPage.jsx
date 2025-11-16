@@ -65,7 +65,11 @@ const GeometricModelingPage = () => {
     setInputValue('');
     
     setIsStreaming(true);
-    const aiMessagePlaceholder = { role: 'assistant', content: '', metadata: null };
+    const aiMessagePlaceholder = { role: 'assistant', 
+        content: '', 
+        metadata: null,
+        task_type: 'geometry'
+       };
     addMessage(aiMessagePlaceholder);
 
     // 文件上传逻辑 (如果需要)
@@ -121,19 +125,18 @@ const GeometricModelingPage = () => {
       response_mode: "streaming",
       onMessage: {
         conversation_info: (data) => {
-          console.log("Task and conversation info received:", data);
-          // 可以在这里更新UI，例如显示任务ID
-        },
-        text_chunk: (data) => {
-          updateLastAiMessage({ textChunk: data.text });
-        },
-        image_chunk: (data) => {
-          updateLastAiMessage({ image: data });
-        },
-        message_end: (data) => {
-          updateLastAiMessage({ finalData: data });
-          //updateLastAiMessage({ status: "done" }); // 只标记结束 修改于 2025.9.12.10.15
-        },
+          console.log("Task and conversation info received:", data);
+          // 确保后端在 data 中发送了 metadata
+          if (data.metadata) {
+            updateLastAiMessage({ metadata: data.metadata }); // <-- 触发 Store 中的 metadata 合并
+          }
+        },
+        text_chunk: (data) => {
+          updateLastAiMessage({ textChunk: data.text });
+        },
+        message_end: (data) => {
+          updateLastAiMessage({ finalData: data }); // finalData 携带最终 answer 和 metadata
+        },
       },
       onError: (error) => {
         console.error("SSE error:", error);

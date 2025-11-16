@@ -708,7 +708,21 @@ const handleImagesExtracted = useCallback((images) => {
         response_mode: "streaming",
         onMessage: {
           text_chunk: (data) => {
-            updateLastAiMessage({ textChunk: data.text });
+            // 💥 检查点：打印完整的 data 对象
+            console.log("🔍 SSE text_chunk 回调被触发");
+            console.log("🔍 完整 data 对象:", data);
+            console.log("🔍 data.text 值:", data.text);
+            console.log("🔍 typeof data:", typeof data);
+            
+            // 尝试提取文本内容
+            const textContent = data.text || data;
+            console.log("🔍 提取的文本内容:", textContent);
+            
+            if (textContent) {
+              updateLastAiMessage({ textChunk: textContent });
+            } else {
+              console.warn("⚠️ text_chunk 没有有效的文本内容");
+            }
           },
           image_chunk: (data) => {
             updateLastAiMessage({ image: data });

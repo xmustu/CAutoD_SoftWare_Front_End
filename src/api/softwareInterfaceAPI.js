@@ -9,6 +9,6 @@ import { get } from "./index.js";
  * url地址：/software-interface/history
  * 请求方式：GET
  */
-export function getSoftwareHistory() {
-  return get("/software-interface/history");
+export function getSoftwareHistory(userId) { // 可能需要一个 userId 参数
+    return get(`/chat/history?user_id=${userId}`); 
 }

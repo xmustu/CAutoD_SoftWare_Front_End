@@ -56,13 +56,13 @@ export default defineConfig(({ mode }) => {
       // 关键：把 /api 代理到服务器本机的 FastAPI
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:8081", // 这里是 Vite 所在服务器能访问到的后端地址
+          target: "http://127.0.0.1:8080", // 这里是 Vite 所在服务器能访问到的后端地址
           changeOrigin: true,
           // 如果后端真实路由没有 /api 前缀，打开下面的重写
           // rewrite: (p) => p.replace(/^\/api/, ""),
         },
         "/files": {
-          target: "http://127.0.0.1:8081",
+          target: "http://127.0.0.1:8080",
           changeOrigin: true,
         },
       },

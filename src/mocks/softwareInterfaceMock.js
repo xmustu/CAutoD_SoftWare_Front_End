@@ -60,12 +60,12 @@ const historyData = [
   },
 ];
 
-Mock.mock("http://localhost:3000/api/software-interface/history", "get", () => {
-  return {
-    code: 200,
-    message: "success",
-    data: {
-      history: historyData,
-    },
-  };
-});
+// Mock.mock("http://localhost:3000/api/software-interface/history", "get", () => {
+//   return {
+//     code: 200,
+//     message: "success",
+//     data: {
+//       history: historyData,
+//     },
+//   };
+// });
