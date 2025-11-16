@@ -23,6 +23,8 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  // 后端代理目标：在容器中通过环境变量覆盖（例如 http://cautod_fastapi:8080）
+  const proxyTarget = env.VITE_PROXY_TARGET || "http://127.0.0.1:8080";
   return {
     plugins: [react()],
     resolve: {
@@ -50,19 +52,19 @@ export default defineConfig(({ mode }) => {
 
     server: {
       host: "::",                       // 同时监听 IPv4+IPv6
-      port: 5172,
+      port: 5173,
       allowedHosts: ["cautod.ssvgg.asia"],
 
       // 关键：把 /api 代理到服务器本机的 FastAPI
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:8080", // 这里是 Vite 所在服务器能访问到的后端地址
+          target: proxyTarget, // 可通过 VITE_PROXY_TARGET 覆盖
           changeOrigin: true,
           // 如果后端真实路由没有 /api 前缀，打开下面的重写
           // rewrite: (p) => p.replace(/^\/api/, ""),
         },
         "/files": {
-          target: "http://127.0.0.1:8080",
+          target: proxyTarget,
           changeOrigin: true,
         },
       },

@@ -347,19 +347,24 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
     const getFileUrl = (fileName) => {
         if (!fileName) return '';
         const { activeConversationId, activeTaskId } = useConversationStore.getState();
-        
+        const apiBase = (import.meta?.env?.PROD && import.meta?.env?.VITE_API_URL)
+            ? String(import.meta.env.VITE_API_URL).replace(/\/+$/, '')
+            : '';
+
         // 文件名后缀检查 (图片是静态资源)
         const isImage = /\.(png|jpg|jpeg|gif)$/i.test(fileName);
 
         if (isImage) {
-            // 🚨 静态图片路径： /files/{conv_id}/{task_id}/{file_name}
-            // 依赖 vite.config.js 中 /files 的代理和后端静态文件服务。
-            return `/files/${activeConversationId}/${activeTaskId}/${fileName}`;
+            // 静态图片走后端静态文件目录（容器环境必须使用绝对 API 前缀）
+            const path = `/files/${activeConversationId}/${activeTaskId}/${fileName}`;
+            // 生产环境优先使用绝对地址，避免代理不可用
+            return apiBase ? `${apiBase}${path}` : path;
         }
 
         // 受保护资源路径：模型文件 (STL, STEP/CAD)
         // 依赖 /api/download_file，即使是 POST，前端也必须构造这个 URL。
-        return `/api/download_file?task_id=${activeTaskId}&conversation_id=${activeConversationId}&file_name=${fileName}`;
+        const query = `/api/download_file?task_id=${activeTaskId}&conversation_id=${activeConversationId}&file_name=${encodeURIComponent(fileName)}`;
+        return apiBase ? `${apiBase}${query}` : query;
     };
     
     // 🚨 新增：通过已鉴权的 API 获取 Blob 并在新窗口打开（解决 401）
@@ -641,7 +646,8 @@ const ConversationDisplay = ({ messages, isLoading, onParametersExtracted, onQue
         msg.role === 'user' ? (
           <UserMessage key={msg.id || index} content={msg.content} />
         ) : (
-          <React.Fragment key={msg.id || index}>
+          // 强制在内容长度变化时重新渲染，避免 store 就地修改导致 UI 不刷新
+          <React.Fragment key={`${msg.id || index}-${(msg.content || '').length}-${(msg.parts || []).length}`}>
               <AiMessage 
                   message={msg} 
                   onParametersExtracted={onParametersExtracted}
