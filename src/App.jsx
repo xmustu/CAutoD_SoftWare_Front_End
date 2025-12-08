@@ -14,6 +14,7 @@ import GeometricModelingPage from './pages/GeometricModelingPage';
 import PartRetrievalPage from './pages/PartRetrievalPage';
 import DesignOptimizationPage from './pages/DesignOptimizationPage';
 import SoftwareInterfacePage from './pages/SoftwareInterfacePage';
+import DifyTestPage from './pages/DifyTestPage';
 import HistoryPage from './pages/HistoryPage';
 import TaskListPage from './pages/TaskListPage';
 
@@ -57,6 +58,7 @@ function App() {
               <Route path="parts" element={<PartRetrievalPage />} />
               <Route path="design-optimization" element={<DesignOptimizationPage />} />
               <Route path="software-interface" element={<SoftwareInterfacePage />} />
+              <Route path="dify-test" element={<DifyTestPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="tasks" element={<TaskListPage />} />
             </Route>

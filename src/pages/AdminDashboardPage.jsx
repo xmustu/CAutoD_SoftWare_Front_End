@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { 
   Users, 
   FileText, 
@@ -8,7 +8,9 @@ import {
   XCircle, 
   Clock,
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Cpu,
+  Database
 } from 'lucide-react';
 import { 
   getSystemStats, 
@@ -17,20 +19,43 @@ import {
   getDailyStats 
 } from '../api/adminApi';
 
+// 进度条组件
+const ProgressBar = ({ value, colorClass }) => (
+  <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mt-2">
+    <div className={`h-2.5 rounded-full ${colorClass}`} style={{ width: `${Math.max(0, Math.min(100, value || 0))}%`, transition: 'width 0.5s ease-in-out' }}></div>
+  </div>
+);
+
 const AdminDashboardPage = () => {
   const [stats, setStats] = useState(null);
   const [userStats, setUserStats] = useState([]);
   const [taskTypeStats, setTaskTypeStats] = useState([]);
   const [dailyStats, setDailyStats] = useState([]);
+  
+  // 这里的 loading 只用于“首次进入页面”的加载状态
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
+    // 1. 首次加载 (显示 Loading)
+    fetchData(false);
+
+    // 2. 设置定时器，每 3000 毫秒 (3秒) 静默更新一次数据
+    const interval = setInterval(() => {
+      fetchData(true); // 传入 true，表示后台更新，不显示全屏 Loading
+    }, 3000);
+
+    // 3. 组件卸载时清除定时器
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchData = async () => {
+  // 💥 修改核心：增加 isBackground 参数
+  const fetchData = async (isBackground = false) => {
     try {
-      setLoading(true);
+      // 只有不是后台更新时，才显示全屏加载动画
+      if (!isBackground) {
+        setLoading(true);
+      }
+
       const [statsData, usersData, taskTypesData, dailyData] = await Promise.all([
         getSystemStats().catch(err => {
           console.error('获取系统统计失败:', err);
@@ -50,14 +75,16 @@ const AdminDashboardPage = () => {
         })
       ]);
       
+      // 更新状态 (React 会自动处理 Diff，只有数据变了才会重渲染 DOM)
       setStats(statsData);
       setUserStats(usersData || []);
       setTaskTypeStats(taskTypesData || []);
       setDailyStats(dailyData || []);
+
     } catch (error) {
       console.error('获取数据失败:', error);
-      // 不显示 alert，只在控制台记录
     } finally {
+      // 无论是否后台更新，最后都确保 loading 为 false
       setLoading(false);
     }
   };
@@ -65,17 +92,23 @@ const AdminDashboardPage = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-xl">加载中...</div>
+        <div className="text-xl flex items-center gap-2">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            加载系统数据...
+        </div>
       </div>
     );
   }
+
+  // 辅助函数：将 MB 转换为 GB
+  const toGB = (mb) => (mb ? (mb / 1024).toFixed(1) : '0.0');
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-800">管理员控制台</h1>
         <button 
-          onClick={fetchData}
+          onClick={() => fetchData(false)} // 手动点击刷新时，显示 Loading 动画给用户反馈
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
         >
           <RefreshCw className="h-4 w-4" />
@@ -83,7 +116,64 @@ const AdminDashboardPage = () => {
         </button>
       </div>
 
-      {/* 统计卡片 */}
+       {/* --- 系统资源监控面板 --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         {/* CPU 卡片 */}
+         <Card className="bg-slate-900 text-white border-slate-800">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    <Cpu className="h-4 w-4" /> CPU 负载 (Server)
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{stats?.cpu_usage ?? 0}%</div>
+                <ProgressBar value={stats?.cpu_usage} colorClass="bg-blue-500" />
+                <p className="text-xs text-slate-400 mt-2">
+                    {stats?.cpu_cores ? `${stats.cpu_cores} Cores` : 'Unknown Cores'}
+                </p>
+            </CardContent>
+         </Card>
+
+         {/* 内存 卡片 */}
+         <Card className="bg-slate-900 text-white border-slate-800">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    <Database className="h-4 w-4" /> 内存使用率
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{stats?.memory_usage ?? 0}%</div>
+                <ProgressBar value={stats?.memory_usage} colorClass="bg-purple-500" />
+                <p className="text-xs text-slate-400 mt-2">
+                   Used: {toGB(stats?.memory_used)} GB / Total: {toGB(stats?.memory_total)} GB
+                </p>
+            </CardContent>
+         </Card>
+
+         {/* GPU 卡片 */}
+         <Card className="bg-slate-900 text-white border-slate-800">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                    <Activity className="h-4 w-4" /> GPU / 显存
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">
+                    {stats?.gpu_usage !== null ? `${stats?.gpu_usage}%` : 'N/A'}
+                </div>
+                <ProgressBar 
+                    value={stats?.gpu_usage} 
+                    colorClass={(stats?.gpu_usage || 0) > 80 ? "bg-red-500" : "bg-green-500"} 
+                />
+                <p className="text-xs text-slate-400 mt-2">
+                    {stats?.gpu_count ? `Devices: ${stats.gpu_count}` : 'No GPU detected'}
+                    {stats?.gpu_memory_used ? ` (Mem: ${toGB(stats.gpu_memory_used)}GB)` : ''}
+                </p>
+            </CardContent>
+         </Card>
+      </div>
+      
+      {/* 统计概览卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -148,7 +238,7 @@ const AdminDashboardPage = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg">
+             <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg">
               <Clock className="h-8 w-8 text-yellow-600" />
               <div>
                 <div className="text-sm text-gray-600">待处理</div>

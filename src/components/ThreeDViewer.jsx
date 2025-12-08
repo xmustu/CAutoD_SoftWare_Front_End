@@ -1,114 +1,301 @@
-import React, { Suspense } from 'react';
-import { Canvas, useLoader } from '@react-three/fiber'; // 💥 Import useLoader from fiber
-import { OrbitControls, Environment, Html } from '@react-three/drei';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'; // 💥 Import STLLoader
-import { Color } from 'three';
+import React, { Suspense, useRef, useLayoutEffect, useEffect, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { Canvas, useLoader, useThree } from '@react-three/fiber';
+import { 
+    OrbitControls, 
+    Html, 
+    PerspectiveCamera, 
+    OrthographicCamera 
+} from '@react-three/drei';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
+import { Color, Vector3, PCFSoftShadowMap } from 'three';
 
 // -------------------------------------------------------------
-// Model Component: Responsible for loading and rendering the STL file
+// 1. Model Component (保持不变)
 // -------------------------------------------------------------
-const StlModel = ({ url }) => {
-    // 💥 Use the standard useLoader hook: pass STLLoader and model URL
-    // useLoader returns the loaded BufferGeometry object
+const StlModel = ({ url, highlightState, setHighlightState, partVisibility, onPartsLoaded }) => {
     const geometry = useLoader(STLLoader, url);
-    
-    // Calculate the bounding box and center the model
-    const meshRef = React.useRef();
-    React.useLayoutEffect(() => {
+    const meshRef = useRef();
+
+    useEffect(() => {
+        return () => {
+            if (geometry) geometry.dispose();
+        };
+    }, [geometry]);
+
+    useEffect(() => {
+        if (onPartsLoaded) {
+            onPartsLoaded(['Model']);
+        }
+    }, [onPartsLoaded]);
+
+    useLayoutEffect(() => {
         if (meshRef.current) {
             geometry.computeBoundingBox();
             const box = geometry.boundingBox;
-            const center = new THREE.Vector3();
+            const center = new Vector3();
             box.getCenter(center);
-            meshRef.current.position.sub(center); // Center the mesh
+            meshRef.current.position.sub(center);
         }
     }, [geometry]);
 
+    const baseColor = new Color('#1a4b88');
+    const highlightColor = new Color('#ff4b88');
+
+    const handleClick = (event) => {
+        event.stopPropagation();
+        if (setHighlightState) {
+            const isCurrentHighlighted = highlightState?.name === 'Model' && highlightState?.isHighlighted;
+            setHighlightState({
+                name: isCurrentHighlighted ? null : 'Model',
+                isHighlighted: !isCurrentHighlighted
+            });
+        }
+    };
+
+    const isHighlighted = highlightState?.name === 'Model' && highlightState?.isHighlighted;
+    const color = isHighlighted ? highlightColor : baseColor;
+    const isVisible = !partVisibility || partVisibility['Model'] !== false;
 
     return (
-        // <mesh> is the THREE.Mesh object in Three.js
         <mesh 
             ref={meshRef}
             geometry={geometry}
             castShadow
             receiveShadow
+            onClick={handleClick}
+            visible={isVisible}
         >
-            {/* Basic material for displaying the geometry shape */}
             <meshStandardMaterial 
-                color="#888888" 
-                roughness={0.5} 
-                metalness={0.5} 
+                color={color}
+                roughness={0.7} 
+                metalness={0.1} 
             />
         </mesh>
     );
 };
 
 // -------------------------------------------------------------
-// ThreeDViewer Component: Sets up the 3D scene, lighting, and camera controls
+// 2. 场景环境设置 (相机 + 网格 + 坐标轴)
 // -------------------------------------------------------------
-const ThreeDViewer = ({ modelUrl }) => {
-    // Set the default background color for the Canvas
+const SceneSetup = ({ cameraType, upAxis, isGridVisible }) => { // 💥 接收 isGridVisible
+    const upVector = upAxis === 'z' ? [0, 0, 1] : [0, 1, 0];
+    const gridRotation = upAxis === 'z' ? [Math.PI / 2, 0, 0] : [0, 0, 0];
+
+    return (
+        <>
+            {cameraType === 'orthographic' ? (
+                <OrthographicCamera 
+                    makeDefault 
+                    position={[50, 50, 50]} 
+                    zoom={15} 
+                    up={upVector}
+                    near={0.1} 
+                    far={2000} 
+                />
+            ) : (
+                <PerspectiveCamera 
+                    makeDefault 
+                    position={[80, 80, 80]} 
+                    fov={45} 
+                    up={upVector}
+                    near={0.1} 
+                    far={2000} 
+                />
+            )}
+
+            {/* 💥 使用 group 的 visible 属性来控制显示/隐藏 */}
+            <group visible={isGridVisible}>
+                <gridHelper args={[200, 50, 0x888888, 0x444444]} rotation={gridRotation} />
+                <axesHelper args={[50]} />
+            </group>
+        </>
+    );
+};
+
+// -------------------------------------------------------------
+// 3. 截图处理器
+// -------------------------------------------------------------
+const CaptureHandler = forwardRef((props, ref) => {
+    const { gl, scene, camera } = useThree();
+
+    useImperativeHandle(ref, () => ({
+        triggerSnapshot: (width, height, fileName = 'model_snapshot.png') => {
+            const originalSize = new THREE.Vector2();
+            gl.getSize(originalSize);
+            const originalAspect = camera.aspect; 
+            
+            const originalOrtho = {
+                left: camera.left,
+                right: camera.right,
+                top: camera.top,
+                bottom: camera.bottom,
+                zoom: camera.zoom
+            };
+
+            gl.setSize(width, height);
+            const newAspect = width / height;
+
+            if (camera.isPerspectiveCamera) {
+                camera.aspect = newAspect;
+                camera.updateProjectionMatrix();
+            } else if (camera.isOrthographicCamera) {
+                const frustumHeight = (camera.top - camera.bottom);
+                camera.left = -frustumHeight * newAspect / 2;
+                camera.right = frustumHeight * newAspect / 2;
+                camera.top = frustumHeight / 2;
+                camera.bottom = -frustumHeight / 2;
+                camera.updateProjectionMatrix();
+            }
+            
+            gl.render(scene, camera);
+            const dataURL = gl.domElement.toDataURL('image/png');
+            
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            gl.setSize(originalSize.x, originalSize.y);
+            
+            if (camera.isPerspectiveCamera) {
+                camera.aspect = originalSize.x / originalSize.y; 
+                camera.updateProjectionMatrix();
+            } else if (camera.isOrthographicCamera) {
+                camera.left = originalOrtho.left;
+                camera.right = originalOrtho.right;
+                camera.top = originalOrtho.top;
+                camera.bottom = originalOrtho.bottom;
+                camera.updateProjectionMatrix();
+            }
+        }
+    }));
+    return null;
+});
+
+// -------------------------------------------------------------
+// 4. ThreeDViewer Component
+// -------------------------------------------------------------
+const ThreeDViewer = forwardRef(({ 
+    modelUrl, 
+    highlightState, 
+    setHighlightState, 
+    partVisibility, 
+    onPartsLoaded,
+    quality = 'medium',
+    cameraType = 'perspective', 
+    upAxis = 'z',
+    isViewLocked = false,
+    isGridVisible = true // 💥 接收新参数，默认为 true
+}, ref) => {
     const defaultBgColor = new Color('#f0f0f0'); 
+    
+    const captureRef = useRef();
+
+    useImperativeHandle(ref, () => ({
+        captureSnapshot: (w, h) => {
+            if (captureRef.current) {
+                captureRef.current.triggerSnapshot(w, h);
+            }
+        }
+    }));
+
+    const config = useMemo(() => {
+        switch (quality) {
+            case 'low': return { dpr: 0.5, shadowMapSize: 512, antialias: false };
+            case 'high': return { dpr: [1, 3], shadowMapSize: 2048, antialias: true };
+            case 'medium': default: return { dpr: [1, 1.5], shadowMapSize: 1024, antialias: true };
+        }
+    }, [quality]);
+
+    const handlePointerMissed = () => {
+        if (setHighlightState) {
+            setHighlightState({ name: null, isHighlighted: false });
+        }
+    };
 
     return (
         <Canvas
-            // The style and size must be determined by the parent container
+            dpr={config.dpr}
             style={{ width: '100%', height: '100%', minHeight: '500px', borderRadius: '8px' }}
-            // Adjust the initial camera position to view the model
-            camera={{ position: [50, 50, 50], fov: 75 }} 
-            gl={{ antialias: true, alpha: false }} // Enable antialiasing
-            onCreated={({ gl }) => {
-                gl.setClearColor(defaultBgColor); // Set the background color
-                gl.shadowMap.enabled = true; // Enable shadows
+            gl={{ 
+                antialias: config.antialias, 
+                alpha: false,
+                powerPreference: "high-performance",
+                preserveDrawingBuffer: true 
             }}
+            onCreated={({ gl }) => {
+                gl.setClearColor(defaultBgColor);
+                gl.shadowMap.enabled = true;
+                gl.shadowMap.type = PCFSoftShadowMap;
+            }}
+            onPointerMissed={handlePointerMissed}
         >
-            {/* Ambient Light: Softly illuminates all objects */}
-            <ambientLight intensity={1} /> 
+            {/* 💥 传递 isGridVisible 给 SceneSetup */}
+            <SceneSetup 
+                cameraType={cameraType} 
+                upAxis={upAxis} 
+                isGridVisible={isGridVisible} 
+            />
             
-            {/* Directional Light: Provides shadows and dimensionality */}
-            <spotLight 
-                position={[200, 200, 200]} 
-                angle={0.3} 
-                penumbra={1} 
-                intensity={5000} 
-                castShadow 
-            /> 
-            
-            {/* Add a simple floor plane for shadows and context */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -10, 0]} receiveShadow>
-                <planeGeometry args={[1000, 1000]} />
-                <shadowMaterial transparent opacity={0.1} />
-            </mesh>
+            <CaptureHandler ref={captureRef} />
 
+            <React.Fragment>
+                <hemisphereLight intensity={0.8} skyColor="#ffffff" groundColor="#bbbbff" />
+                <ambientLight intensity={0.5} />
+                <spotLight 
+                    position={[180, 200, 180]} 
+                    angle={0.4} 
+                    penumbra={0.5} 
+                    decay={1} 
+                    intensity={10} 
+                    castShadow 
+                    shadow-mapSize-width={config.shadowMapSize}
+                    shadow-mapSize-height={config.shadowMapSize}
+                    shadow-bias={-0.0001} 
+                    shadow-normalBias={0.05}
+                />
+                <spotLight position={[-180, 100, -180]} angle={0.5} penumbra={1} intensity={5} decay={1} />
 
-            {/* 🌟 Suspense: Handles asynchronous model loading 🌟 */}
+                {/* 地面 */}
+                <mesh 
+                    rotation={upAxis === 'z' ? [0, 0, 0] : [-Math.PI / 2, 0, 0]} 
+                    position={[0, -10, 0]} 
+                    receiveShadow
+                >
+                    <planeGeometry args={[1000, 1000]} />
+                    <shadowMaterial transparent opacity={0.1} />
+                </mesh>
+            </React.Fragment>
+
             <Suspense fallback={
                 <Html center>
-                    <div className="text-gray-600 animate-pulse bg-white p-3 rounded shadow-md">
-                        加载 3D 模型中...
+                    <div className="text-gray-600 bg-white p-2 rounded shadow text-xs">
+                        Loading...
                     </div>
                 </Html>
             }>
-                {modelUrl ? (
-                    <StlModel url={modelUrl} />
-                ) : (
-                    <Html center>
-                        <div className="text-red-600 bg-white p-3 rounded shadow-md">
-                            模型URL缺失，无法加载。
-                        </div>
-                    </Html>
+                {modelUrl && (
+                    <StlModel 
+                        url={modelUrl} 
+                        highlightState={highlightState}
+                        setHighlightState={setHighlightState}
+                        partVisibility={partVisibility}
+                        onPartsLoaded={onPartsLoaded}
+                    />
                 )}
             </Suspense>
 
-            {/* Orbit Controls: Allows users to rotate, zoom, and pan the model with the mouse */}
-            <OrbitControls makeDefault enableZoom enablePan enableRotate /> 
-            
-            {/* 🚨 关键修复：暂时移除或替换 Environment 组件，以避免 useEnvironment 的崩溃 */}
-            {/* <Environment files={null} background={false} /> */}
-            
+            <OrbitControls 
+                makeDefault 
+                enableZoom={!isViewLocked} 
+                enablePan={!isViewLocked} 
+                enableRotate={!isViewLocked} 
+            />
         </Canvas>
     );
-};
+});
 
 export default ThreeDViewer;

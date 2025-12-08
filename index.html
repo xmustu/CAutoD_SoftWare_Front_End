@@ -6,6 +6,119 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CAutoD
     </title>
+    <style>
+      #dify-chatbot-bubble-button {
+        background-color: #1C64F2 !important;
+      }
+      #dify-chatbot-bubble-window {
+        width: 24rem !important;
+        height: 40rem !important;
+      }
+    </style>
+    <script>
+      // Dify Chatbot Configuration
+      // ⚠️ IMPORTANT: Update the baseUrl to match your Dify server address
+      window.difyChatbotConfig = {
+        token: 'ahBDqbkQSU8821zq',
+        baseUrl: 'http://localhost:81', // Dify server URL
+        inputs: {
+          // You can define the inputs from the Start node here
+          // key is the variable name
+          // e.g.
+          // name: "NAME"
+        },
+        systemVariables: {
+          // user_id: 'YOU CAN DEFINE USER ID HERE',
+          // conversation_id: 'YOU CAN DEFINE CONVERSATION ID HERE, IT MUST BE A VALID UUID',
+        },
+        userVariables: {
+          // avatar_url: 'YOU CAN DEFINE USER AVATAR URL HERE',
+          // name: 'YOU CAN DEFINE USER NAME HERE',
+        },
+      };
+      
+      // Load Dify chatbot script after DOM is ready
+      (function() {
+        var scriptAttempts = [];
+        var currentAttempt = 0;
+        
+        // Common Dify server ports to try (in order)
+        var commonPorts = [
+          window.difyChatbotConfig.baseUrl, // Try configured URL first
+          'http://localhost:81',
+        ];
+        
+        function loadDifyScript(baseUrl) {
+          if (document.getElementById('ahBDqbkQSU8821zq')) {
+            console.log('Dify chatbot script already loaded');
+            return; // Script already loaded
+          }
+          
+          var scriptUrl = baseUrl + '/embed.min.js';
+          console.log('Attempting to load Dify chatbot script from:', scriptUrl);
+          
+          var script = document.createElement('script');
+          script.src = scriptUrl;
+          script.id = 'ahBDqbkQSU8821zq';
+          script.defer = true;
+          
+          script.onload = function() {
+            console.log('✅ Dify chatbot script loaded successfully from:', scriptUrl);
+            // Update baseUrl in config to the working URL
+            window.difyChatbotConfig.baseUrl = baseUrl;
+          };
+          
+          script.onerror = function() {
+            console.warn('❌ Failed to load from:', scriptUrl);
+            currentAttempt++;
+            
+            // Try next URL if available
+            if (currentAttempt < commonPorts.length) {
+              console.log('Trying next URL...');
+              // Remove failed script
+              var failedScript = document.getElementById('ahBDqbkQSU8821zq');
+              if (failedScript) {
+                failedScript.remove();
+              }
+              // Try next URL
+              setTimeout(function() {
+                loadDifyScript(commonPorts[currentAttempt]);
+              }, 500);
+            } else {
+              // All attempts failed
+              console.error('❌ All attempts to load Dify chatbot script failed.');
+              console.error('Please check:');
+              console.error('1. Is your Dify server running?');
+              console.error('2. What is the correct baseUrl?');
+              console.error('3. Update baseUrl in index.html to the correct address');
+              console.error('4. Common Dify URLs:');
+              console.error('   - http://localhost:3000');
+              console.error('   - http://localhost:8000');
+              console.error('   - https://your-dify-domain.com');
+            }
+          };
+          
+          document.body.appendChild(script);
+        }
+        
+        function initDify() {
+          // Remove duplicates from commonPorts
+          var uniquePorts = commonPorts.filter(function(url, index) {
+            return commonPorts.indexOf(url) === index;
+          });
+          commonPorts = uniquePorts;
+          
+          loadDifyScript(commonPorts[0]);
+        }
+        
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initDify);
+        } else {
+          // DOM already loaded
+          initDify();
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

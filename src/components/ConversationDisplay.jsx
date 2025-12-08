@@ -540,7 +540,7 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
                             <h4 className="text-sm font-semibold mb-2">生成文件:</h4>
                             <div className="flex flex-col space-y-2">
                                 
-                                {/* 预览图按钮 */}
+                              {/* 预览图按钮
                                 {metadata && metadata.preview_image && (
                                 <Button 
                                     variant="outline" 
@@ -550,7 +550,7 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
                                 >
                                     <ImageIcon className="mr-2 h-4 w-4" /> 预览图
                                 </Button>
-                                )}
+                                )} */}
 
                                 {/* CAD 模型按钮组 */}
                                 {(metadata && metadata.cad_file) && (
