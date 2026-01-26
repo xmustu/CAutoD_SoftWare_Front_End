@@ -5,9 +5,15 @@ import { Input } from '@/components/ui/input';
 import { executeTaskAPI, submitOptimizationParamsAPI } from '@/api/taskAPI';
 import { uploadFileAPI } from '@/api/fileAPI.js';
 import { Upload } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
+import { Move } from 'lucide-react';
 import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
+import InteractiveFileUpload from '@/components/InteractiveFileUpload.jsx';
+import QueueStatusBanner from '@/components/QueueStatusBanner.jsx';
 import ProtectedImage from '@/components/ProtectedImage'; // 导入 ProtectedImage 组件
+import OptimizationConfigModal from '@/components/OptimizationConfigModal';
+import FloatingConfigButton from '@/components/FloatingConfigButton';
 // import { listenOptimizationSSE } from "@/api/conversationapi";
 // import { getOptimizationQueue } from "@/api/conversationapi";
 import axios from 'axios';
@@ -68,53 +74,8 @@ const WorkflowGuide = ({ queueLength, runningTasks }) => {
         <li>点击下方的“开始优化”按钮，系统将对上传的模型进行分析与优化。</li>
         <li>系统将执行优化，您可以根据结果进行多轮迭代，直到满意为止。</li>
       </ol>
-      <p className="mt-2 text-sm text-gray-600 text-center">
-        {queueLength === null
-          ? "正在获取当前优化队列信息..."
-          : queueLength === -1
-          ? "获取队列信息失败"
-          : runningTasks > 0
-          ? `当前有 ${runningTasks} 个任务正在执行，队列中还有 ${queueLength} 个任务等待`
-          : queueLength === 0
-          ? "当前没有等待的优化任务"
-          : `当前优化队列中有 ${queueLength} 个任务等待执行`}
-      </p>
     </div>
   );
-};
-
-const FileUploadComponent = ({ onFileSelect, onStart, selectedFile, isStreaming, disabled }) => {
-  const fileInputRef = React.useRef(null);
-
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      onFileSelect(file);
-    }
-  };
-
-  const handleButtonClick = () => {
-    fileInputRef.current.click();
-  };
-
-  return (
-    <div className="flex flex-col items-center space-y-4 w-full max-w-xs mx-auto">
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        className="hidden"
-        accept=".sldprt"
-      />
-      <Button onClick={handleButtonClick} disabled={disabled} variant="outline" className="w-full">
-        <Upload className="mr-2 h-4 w-4" />
-        {selectedFile ? `已选择: ${selectedFile.name}` : '选择 .sldprt 文件'}
-      </Button>
-      <Button onClick={onStart} disabled={!selectedFile || disabled} size="lg" className="w-full">
-        开始优化
-      </Button>
-    </div>
-  );
 };
 
 const fixedParamsDefinitions = [
@@ -141,7 +102,8 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
   // 状态，用于保存用户的输入和范围
   const [ranges, setRanges] = useState({});
   const [fixedValues, setFixedValues] = useState({});
-
+  // 1️⃣ 【新增】使用 ref 来跟踪用户是否手动修改了特定参数（避免重渲染）
+  const manualOverridesRef = React.useRef({});
   // --- 修复点 1：控制 fixedValues, extendedParams, checkedParams 的初始化 ---
   useEffect(() => {
     const extractedParams = params ? params.filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name)) : [];
@@ -175,6 +137,7 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
         initialFixedValues[fixedParam.name] = String(fixedParam.initialValue || '');
       });
       setFixedValues(initialFixedValues);
+      manualOverridesRef.current = {};
     }
 
     prevParamsRef.current = params;
@@ -204,7 +167,7 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
     }
   }, [extendedParams]);
 
-  // --- 修复点 2：固定参数推荐逻辑 (使用函数式更新，确保不覆盖用户的其他输入) ---
+  // 2️⃣ 【修改】固定参数推荐逻辑 (增加防覆盖判断)---
   useEffect(() => {
     const optimizableParamNames = extendedParams
       .filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name))
@@ -224,9 +187,15 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
     }
 
     setFixedValues(prev => {
-      const newGenerations = String(recommendedGenerations);
-      const newPopulationSize = String(recommendedPopulationSize);
+      // 检查用户是否手动修改过
+      const isPopModified = manualOverridesRef.current['population_size'];
+      const isGenModified = manualOverridesRef.current['generations'];
 
+      // 如果用户修改过，使用当前值(prev)，否则使用推荐值
+      const newPopulationSize = isPopModified ? prev.population_size : String(recommendedPopulationSize);
+      const newGenerations = isGenModified ? prev.generations : String(recommendedGenerations);
+
+      // 如果计算出的新状态和当前状态一致，则不更新（避免重渲染）
       if (prev.generations === newGenerations && prev.population_size === newPopulationSize) {
         return prev;
       }
@@ -340,7 +309,11 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
               {param.isSelect ? (
                 <Select
                   value={fixedValues[param.name]}
-                  onValueChange={(value) => setFixedValues(prev => ({ ...prev, [param.name]: value }))}
+                  // 3️⃣ 【修改】onValueChange：记录用户的手动操作
+                  onValueChange={(value) => {
+                    manualOverridesRef.current[param.name] = true; // 标记为已手动修改
+                    setFixedValues(prev => ({ ...prev, [param.name]: value }));
+                  }}
                   disabled={isInputDisabled}
                 >
                   <SelectTrigger className="col-span-1">
@@ -439,6 +412,9 @@ const DesignOptimizationPage = () => {
   const [runningTasks, setRunningTasks] = useState(0); // 运行中的任务数
   const [queuePosition, setQueuePosition] = useState(null); // <-- 修复 1：添加 queuePosition** 
   const [currentTaskId, setCurrentTaskId] = useState(null); // <-- 修复 2：添加 currentTaskId**
+  // 新增：控制参数配置模态框的状态
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+
 // 轮询获取队列长度
     useEffect(() => {
     // 默认轮询间隔 (非任务执行期间)
@@ -516,68 +492,13 @@ const DesignOptimizationPage = () => {
 
   }, [messages]);
    
-  // // 打开队列弹窗并获取首次信息
-  // const handleOpenDialog = async (taskId) => {
-  //   if (!taskId) {
-  //     console.warn("⚠️ 未找到任务ID，无法查询队列。");
-  //     return;
-  //   }
-
-  //   setCurrentTaskId(taskId);
-  //   setIsQueueDialogOpen(true);
-
-  //   try {
-  //     const res = await getOptimizationQueue();
-  //     console.log("首次获取队列信息返回:", res);
-
-  //     const taskIdStr = String(currentTaskId);
-  //     const index = res.findIndex((t) => String(t.task_id) === taskIdStr);
-  //     setQueuePosition(index === -1 ? 0 : index); // 不在队列中 => 正在执行
-  //   } catch (err) {
-  //     console.error("获取队列信息失败:", err);
-  //   }
-  // };
-  // // Dialog 打开时轮询队列信息
-  // useEffect(() => {
-  //   if (isQueueDialogOpen && currentTaskId) {
-  //     const fetchQueuePosition = async () => {
-  //       try {
-  //         const res = await getOptimizationQueue();
-  //         console.log("轮询队列信息返回:", res);
-
-  //         if (!Array.isArray(res)) {
-  //           console.warn("⚠️ 接口返回异常:", res);
-  //           setQueuePosition(0);
-  //           return;
-  //         }
-
-  //         const taskIdStr = String(currentTaskId);
-  //         const index = res.findIndex((t) => String(t.task_id) === taskIdStr);
-
-  //         if (res.length === 0) {
-  //           setQueuePosition(0); // 队列空 => 没任务，说明在执行
-  //         } else if (index === -1) {
-  //           console.log("✅ 当前任务不在 pending 队列中 => 执行中");
-  //           setQueuePosition(0);
-  //         } else {
-  //           setQueuePosition(index);
-  //         }
-  //       } catch (err) {
-  //         console.error("获取队列信息失败:", err);
-  //         setQueuePosition(0);
-  //       }
-  //     };
-
-  //     fetchQueuePosition();
-  //     const interval = setInterval(fetchQueuePosition, 5000);
-  //     return () => clearInterval(interval);
-  //   }
-  // }, [isQueueDialogOpen, currentTaskId]);
-
-
   const handleParametersExtracted = useCallback((params) => {
     console.log("DesignOptimizationPage: Parameters extracted from AI message:", params);
     setOptimizableParams(params);
+    // 💥 核心修复：一旦提取到参数，意味着AI进入了“等待用户配置”的阶段
+    // 我们必须手动将运行状态设为 false，否则按钮会被隐藏
+    setIsTaskRunning(false); 
+    //setIsStreaming(false); // 可以顺便停止流式加载动画
   }, []);
 
 const handleImagesExtracted = useCallback((images) => {
@@ -619,6 +540,7 @@ const handleImagesExtracted = useCallback((images) => {
       toast.error("提交参数失败，请重试。");
     }
   };
+
 
   const handleStartOptimization = async () => {
     if (!selectedFile || isTaskRunning || !activeConversationId) return;
@@ -672,28 +594,7 @@ const handleImagesExtracted = useCallback((images) => {
       setIsStreaming(false);
       return;
     }
-    // 插入 SSE 监听逻辑
-    // try {
-    //   // 启动 SSE 监听，并在回调中接收队列更新
-    //   const eventSource = listenOptimizationSSE(
-    //     taskIdToUse,
-    //     (data) => {
-    //       // 普通消息回调（例如优化进度）
-    //       console.log("SSE 数据：", data);
-    //     },
-    //     (pos) => {
-    //       // 这里是我们新增的 “队列位置更新” 回调
-    //       console.log(`✅ 队列位置更新：前方还有 ${pos} 个任务`);
-    //       setQueuePosition(pos);
-    //       setIsQueueDialogOpen(true);
-    //     }
-    //   );
-
-    //   setEventSource(eventSource);
-    // } catch (error) {
-    //   console.error("SSE 连接建立失败:", error);
-    // }
-    // 3. 执行任务
+    
     try {
       const requestData = {
         task_type: taskType,
@@ -825,16 +726,19 @@ const handleImagesExtracted = useCallback((images) => {
   if (messages.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white pb-40">
-        <div className="w-full max-w-2xl text-center">
-          <h1 className="text-4xl font-bold mb-8">上传文件以开始优化</h1>
-          <WorkflowGuide 
-            queueLength={queueLength} 
-            runningTasks={runningTasks} 
-          />
-          <ConversationSelector />
-          <FileUploadComponent
+        <div className="w-full max-w-2xl text-center">
+          <h1 className="text-4xl font-bold mb-8">上传文件以开始优化</h1>
+          
+          {/* ✅ 使用新版队列横幅 */}
+          <QueueStatusBanner queueLength={queueLength} runningTasks={runningTasks} />
+          
+          <WorkflowGuide />
+          <ConversationSelector />
+          
+          {/* ✅ 使用新版上传组件 */}
+          <InteractiveFileUpload
             onFileSelect={setSelectedFile}
-            onStart={handleStartOptimization}
+            onStart={handleStartOptimization} 
             selectedFile={selectedFile}
             isStreaming={isStreaming}
             disabled={!activeConversationId || isTaskRunning}
@@ -847,60 +751,52 @@ const handleImagesExtracted = useCallback((images) => {
 
   return (
     <>
-      {/* 队列信息显示在最上方 */}
-        <div className="w-full max-w-4xl mx-auto mb-4">
-          <div className="max-w-2xl mx-auto bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-            {queueLength === null
-              ? "正在获取当前优化队列信息..."
-              : runningTasks > 0
-              ? `当前有 ${runningTasks} 个任务正在执行，队列中还有 ${queueLength} 个任务等待`
-              : queueLength === 0
-              ? "当前没有等待的优化任务"
-              : `当前优化队列中有 ${queueLength} 个任务等待执行`}
-          </div>
+      {/* 顶部状态条 */}
+      <div className="w-full max-w-4xl mx-auto mb-4 relative z-10">
+         <QueueStatusBanner queueLength={queueLength} runningTasks={runningTasks} />
       </div>
-      <PanelGroup direction="vertical" className="flex flex-col h-full bg-white">
-        <Panel>
+
+      {/* 主聊天区域 - 现在占据全高，去掉了底部的 Panel */}
+      <div className="flex flex-col h-full bg-white relative overflow-hidden rounded-lg border shadow-sm">
+        
+        {/* 如果有提取到参数，并且没有在运行，显示“打开配置”的悬浮按钮或顶部栏 */}
+        {optimizableParams.length > 0 && (
+        <FloatingConfigButton onClick={() => setIsConfigModalOpen(true)} />
+     )}
+        <div className="flex-grow overflow-hidden">
           <ConversationDisplay 
             messages={messages} 
             isLoading={isLoadingMessages}
             onParametersExtracted={handleParametersExtracted} 
-            onImagesExtracted={handleImagesExtracted} // 传递 onImagesExtracted prop
+            onImagesExtracted={handleImagesExtracted} 
+            filterTaskType="optimize"
           />
-        </Panel>
-        
-        <PanelResizeHandle className="h-2 bg-gray-200 hover:bg-gray-300 transition-colors" />
-        <Panel
-          collapsible={true}
-          defaultSize={optimizableParams.length > 0 || formScreenshot.length > 0 ? 50 : 20} 
-          minSize={10}
-        >
-          <div className="p-4 border-t bg-gray-50 h-full overflow-y-auto flex flex-col md:flex-row gap-4"> {/* 使用 flex 布局 */}
-            <div className="flex-grow"> {/* 参数表单或文件上传区域 */}
-              {optimizableParams.length > 0 ? (
-                <ParameterForm 
-                  params={optimizableParams}
-                  onSubmit={handleRangesSubmit}
-                  isStreaming={isStreaming}
-                  isSecondRoundCompleted={isSecondRoundCompleted}
-                  // ✅ 修复：传递截图给 ParameterForm
-                  displayedImages={formScreenshot}// 传递图片数据
-                />
-              ) : (
-                <FileUploadComponent
+        </div>
+
+        {/* 底部保留文件上传条 (仅当参数未提取时，或作为备选操作) */}
+        {optimizableParams.length === 0 && !isTaskRunning && (
+             <div className="p-4 border-t bg-gray-50">
+                 <InteractiveFileUpload
                   onFileSelect={setSelectedFile}
                   onStart={handleStartOptimization}
                   selectedFile={selectedFile}
                   isStreaming={isStreaming}
                   disabled={!activeConversationId || isTaskRunning}
                 />
-              )}
-            </div>
-          </div>
-          
-        </Panel>
-      </PanelGroup>
+             </div>
+        )}
+      </div>
       
+      {/* --- 核心修改：使用 Modal 替代 Panel --- */}
+      <OptimizationConfigModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+        params={optimizableParams}
+        onSubmit={handleRangesSubmit}
+        isTaskRunning={isTaskRunning}
+        displayedImages={formScreenshot} // 传入截图供 Modal 内部展示
+      />
+       
       <Dialog open={isQueueDialogOpen} onOpenChange={setIsQueueDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -909,13 +805,13 @@ const handleImagesExtracted = useCallback((images) => {
               参数已提交
             </DialogTitle>
             <DialogDescription>
-              {queuePosition === null
-                ? "正在获取队列信息，请稍候..."
-                : queuePosition === 0 && runningTasks > 0
-                ? "当前任务正在执行中。请查看聊天记录。"
-                : queuePosition > 0
-                ? `前方还有 ${queuePosition} 个任务，请耐心等待。`
-                : "任务状态异常或已完成。"}
+              {queuePosition === null
+                ? "正在获取队列信息，请稍候..."
+                : queuePosition === 0 && runningTasks > 0
+                ? "当前任务正在执行中。请查看聊天记录。"
+                : queuePosition > 0
+                ? `前方还有 ${queuePosition} 个任务，请耐心等待。`
+                : "任务状态异常或已完成。"}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog';
 
 const TaskListPage = () => {
-  const { tasks, fetchTasks, isLoadingTasks, fetchMessagesForTask, removeTask, updateTask } = useConversationStore();
+  const { tasks, fetchTasks, isLoadingTasks, fetchMessagesForTask, removeTask, updateTask,setActiveTaskId,  setActiveConversationId} = useConversationStore();
   const { user } = useUserStore();
   const navigate = useNavigate();
   const [selectedTask, setSelectedTask] = useState(null);
@@ -33,6 +33,8 @@ const TaskListPage = () => {
 
   const handleTaskClick = async (task) => {
     console.log('Clicked Task:', task); // 添加调试日志
+    if (setActiveTaskId) setActiveTaskId(task.task_id);
+    if (setActiveConversationId) setActiveConversationId(task.conversation_id);
     await fetchMessagesForTask(task.task_id, task.conversation_id);
     
     // 根据任务类型跳转到对应的页面

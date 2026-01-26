@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useLocation } from 'react-router-dom'; // Added useLocation
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { 
@@ -19,7 +19,7 @@ import useUserStore from '@/store/userStore';
 import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
 import ThreeDViewer from '@/components/ThreeDViewer';
-
+const GEOMETRY_BOT_ID = 'ep-m-20251211113938-sr72q';
 // ----------------------------------------------------------------------
 // 1. 辅助组件区域 (悬浮面板、工具栏等)
 // ----------------------------------------------------------------------
@@ -281,23 +281,8 @@ const DetailsPanel = ({ metadata, prompt }) => {
     // 只有当 metadata 中包含 stl_file 或 cad_file 时，才认为模型已就绪
     const fileKey = metadata?.cad_file || metadata?.stl_file;
     const hasModel = !!fileKey;
-
     const fileName = hasModel ? fileKey : "等待生成...";
     const format = hasModel ? fileName.split('.').pop()?.toUpperCase() : "-";
-
-    // 2. Mock 数据逻辑调整：
-    // 只有当 hasModel 为 true 时，才使用 mock 数据，否则为空或加载提示
-    const modelDescription = hasModel 
-        ? (metadata?.description || "本方案采用了加强型连接结构，适用于高负载工况。底座增加了4个定位销孔以提高装配精度。")
-        : "等待模型生成后显示设计意图...";
-
-    const modelFiles = hasModel 
-        ? (metadata?.file_list || [
-            fileName, 
-            "assembly_v1.step", 
-            "preview.png"
-          ])
-        : [];
 
     return (
         <div className="absolute top-2 right-2 z-20 w-72 flex flex-col transition-all duration-300">
@@ -322,53 +307,18 @@ const DetailsPanel = ({ metadata, prompt }) => {
                         <span className="text-gray-500">格式:</span>
                         <span className="col-span-2 text-white">{format}</span>
                         <span className="text-gray-500">状态:</span>
-                        {/* 💥 修正点1：根据 hasModel 动态显示状态颜色和文字 */}
                         <span className={`col-span-2 ${hasModel ? 'text-green-400' : 'text-yellow-500 animate-pulse'}`}>
                             {hasModel ? '已加载' : '生成中...'}
                         </span>
                     </div>
 
-                    {/* 2. 文件列表 (仅在有模型时显示内容) */}
-                    <div className="space-y-1">
-                        <div className="flex items-center text-gray-500 gap-1">
-                            <FolderOpen className="w-3 h-3" /> 
-                            <span>生成结果列表:</span>
-                        </div>
-                        <div className="bg-black/30 p-2 rounded text-gray-400 leading-relaxed max-h-24 overflow-y-auto custom-scrollbar border border-white/5 text-[10px]">
-                            {/* 💥 修正点2：根据 hasModel 判断显示列表还是空状态 */}
-                            {hasModel ? (
-                                <ul className="space-y-1">
-                                    {modelFiles.map((file, i) => (
-                                        <li key={i} className="flex items-center gap-2 hover:bg-white/5 p-1 rounded cursor-pointer transition-colors">
-                                            <FileType className="w-3 h-3 text-blue-400" />
-                                            <span className="truncate text-gray-300" title={file}>{file}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <div className="text-center py-2 opacity-50 italic">暂无文件</div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* 3. 设计意图/功能说明 */}
-                    <div className="space-y-1">
-                        <div className="flex items-center text-gray-500 gap-1">
-                            <FileText className="w-3 h-3" /> 
-                            <span>设计意图说明:</span>
-                        </div>
-                        <div className={`bg-black/30 p-2 rounded leading-relaxed max-h-24 overflow-y-auto custom-scrollbar border border-white/5 text-[10px] ${hasModel ? 'text-gray-200' : 'text-gray-500 italic'}`}>
-                             {modelDescription}
-                        </div>
-                    </div>
-
-                    {/* 4. 原始 Prompt (这个应该始终显示，因为它来自用户输入) */}
-                    <div className="space-y-1 pt-2 border-t border-white/10">
+                    {/* 2. 原始 Prompt (这个应该始终显示，因为它来自用户输入) */}
+                    <div className="space-y-1 pt-2"> {/* 移除了 border-t，因为上面已经没有内容分隔了 */}
                         <div className="flex items-center text-gray-500 gap-1">
                             <Code className="w-3 h-3" /> 
                             <span>原始指令:</span>
                         </div>
-                        <div className="bg-black/30 p-2 rounded text-gray-200 leading-relaxed max-h-20 overflow-y-auto custom-scrollbar border border-white/5 text-[10px] break-all">
+                        <div className="bg-black/30 p-2 rounded text-gray-200 leading-relaxed max-h-40 overflow-y-auto custom-scrollbar border border-white/5 text-[10px] break-all">
                             {prompt || "等待用户输入..."}
                         </div>
                     </div>
@@ -408,7 +358,7 @@ const GeometricModelingPage = () => {
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-  
+  const location = useLocation();
   // 3D 视图状态
   const [currentStlUrl, setCurrentStlUrl] = useState(null);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
@@ -505,7 +455,37 @@ const GeometricModelingPage = () => {
         if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
     };
   }, []);
-  
+
+  // --- 💥 新增 Effect: 从历史记录恢复状态 (组件挂载时执行) ---
+  useEffect(() => {
+    // 仅在有消息、非流式传输且当前没有加载模型时执行
+    if (messages && messages.length > 0 && !isStreaming && !currentStlUrl) {
+        
+        // 1. 恢复对话状态 (Prompt 和 AI 回复)
+        const lastAiMsg = messages.slice().reverse().find(m => m.role === 'assistant');
+        const lastUserMsg = messages.slice().reverse().find(m => m.role === 'user');
+
+        if (lastUserMsg) setLastUserPrompt(lastUserMsg.content);
+        
+        if (lastAiMsg) {
+            setLastAiContent(lastAiMsg.content);
+            setLatestMetadata(lastAiMsg.metadata || {});
+
+            // 2. 尝试自动加载模型
+            const stlFile = lastAiMsg.metadata?.stl_file;
+            
+            // 优先使用 metadata 中的文件名，其次尝试路由传递的 state
+            const fileToLoad = stlFile || location.state?.fileName;
+
+            if (fileToLoad && activeTaskId) {
+                 console.log("正在从历史记录恢复模型:", fileToLoad);
+                 // 稍微延迟确保 activeTaskId 已就绪
+                 setTimeout(() => handleShowModel(fileToLoad), 100);
+            }
+        }
+    }
+  }, [messages, activeTaskId, activeConversationId]); // 依赖项：当消息加载或任务ID变化时触发
+
   // 拖动逻辑
   const handleMouseDown = () => {
     document.addEventListener('mousemove', handleMouseMove);
@@ -591,7 +571,12 @@ const GeometricModelingPage = () => {
     setIsStreaming(true);
     // 重置自动加载标记
     loadedFileRef.current = null;
-    addMessage({ role: 'assistant', content: '', metadata: null });
+        addMessage({ 
+        role: 'assistant', 
+        content: '', 
+        task_type: 'geometry', // <--- 关键补充
+        metadata: null 
+    });
 
     if (selectedFile) setSelectedFile(null);
 
@@ -663,7 +648,14 @@ const GeometricModelingPage = () => {
         onClose: () => setIsStreaming(false),
     });
   };
-
+  // 💥 关键修复：如果正在加载历史消息，显示加载圈，而不是直接显示空白初始页
+  if (isLoadingMessages) {
+       return (
+         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+           <Loader2 className="w-8 h-8 animate-spin text-gray-400"/>
+         </div>
+       );
+  }
   if (messages.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)] bg-white pb-20 overflow-y-auto">
@@ -748,7 +740,7 @@ return (
 
         <div style={{ width: `${100 - leftPanelWidth}%` }} className="h-full flex flex-col bg-white shadow-2xl z-10">
             <div className="flex-1 overflow-hidden">
-                <ConversationDisplay messages={messages} isLoading={isLoadingMessages} onQuestionClick={handleQuestionClick} onImagesExtracted={() => {}} onShowModel={handleShowModel} />
+            <ConversationDisplay messages={messages} isLoading={isLoadingMessages} onQuestionClick={handleQuestionClick} onImagesExtracted={() => {}} onShowModel={handleShowModel}/>
             </div>
             <div className="p-4 border-t bg-white">
                 <ChatInput inputValue={inputValue} onInputChange={(e) => setInputValue(e.target.value)} onSendMessage={handleSendMessage} isStreaming={isStreaming} placeholder="输入您的修改意见..." selectedFile={selectedFile} onFileSelect={setSelectedFile} />

@@ -10,7 +10,8 @@ import {
   Shield,
   Bell,
   Globe,
-  CheckCircle
+  CheckCircle,
+  MessageSquare // 新增图标
 } from 'lucide-react';
 import {
   getSystemConfig,
@@ -21,6 +22,7 @@ const SystemSettingsPage = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState({
+    max_conversations_per_user: 50, // <--- 新增核心字段，默认50
     max_tasks_per_user: 10,
     max_file_size_mb: 100,
     enable_registration: true,
@@ -119,6 +121,24 @@ const SystemSettingsPage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+            {/* 2. 在这里插入：每用户最大会话数设置 */}
+              <div>
+                <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-gray-500" />
+                  每用户最大会话数
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.max_conversations_per_user || ''}
+                  onChange={(e) => setConfig({ ...config, max_conversations_per_user: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-red-500">
+                  注意：此项控制 "会话数量已达到上限" 的阈值，建议设置 100 以上。
+                </p>
+              </div>
+              {/* ----------------------------------- */}
               <div>
                 <label className="block text-sm font-medium mb-2">
                   每用户最大任务数

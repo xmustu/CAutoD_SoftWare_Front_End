@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget, // 可通过 VITE_PROXY_TARGET 覆盖
           changeOrigin: true,
           // 如果后端真实路由没有 /api 前缀，打开下面的重写
-          // rewrite: (p) => p.replace(/^\/api/, ""),
+         // rewrite: (p) => p.replace(/^\/api/, ""),
         },
         "/files": {
           target: proxyTarget,

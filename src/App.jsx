@@ -25,9 +25,8 @@ import TaskManagementPage from './pages/TaskManagementPage';
 import SystemSettingsPage from './pages/SystemSettingsPage';
 
 import useUserStore from './store/userStore';
-
-// Placeholder pages for other routes
-const PlaceholderPage = ({ title }) => <h1 className="text-2xl">{title}</h1>;
+//  引入远程新页面
+import RemoteDesktopPage from './pages/RemoteDesktopPage';
 
 // Admin route protection
 const AdminRoute = ({ children }) => {
@@ -44,6 +43,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* 公共路由 */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -51,6 +51,7 @@ function App() {
         
         {token ? (
           <>
+            {/* 普通用户布局路由 */}
             <Route path="/" element={<DashboardLayout />}>
               <Route index element={<Navigate to="/create-project" />} />
               <Route path="create-project" element={<CreateProjectPage />} />
@@ -79,12 +80,16 @@ function App() {
               <Route path="settings" element={<SystemSettingsPage />} />
             </Route>
             
+            {/* --- 关键修改：把远程桌面放在这里，且在 * 号路由之前 --- */}
+            <Route path="/remote-demo" element={<RemoteDesktopPage />} />
+
+            {/* 兜底路由 (必须放在最后) */}
             <Route path="*" element={<Navigate to="/" />} />
           </>
         ) : (
+          /* 未登录时的兜底路由 */
           <Route path="*" element={<Navigate to="/login" />} />
         )}
-
       </Routes>
     </BrowserRouter>
   );
