@@ -274,7 +274,7 @@ const MeshesPanel = ({ parts, visibility, onToggleVisibility, highlightState, on
 };
 
 // --- 4. 右侧 Details 面板组件 (加载状态 + Mock 数据展示) ---
-const DetailsPanel = ({ metadata, prompt }) => {
+const DetailsPanel = ({ metadata, prompt, executionTime }) => {
     const [isExpanded, setIsExpanded] = useState(true);
     
     // 1. 核心判断：是否有模型文件生成
@@ -310,6 +310,15 @@ const DetailsPanel = ({ metadata, prompt }) => {
                         <span className={`col-span-2 ${hasModel ? 'text-green-400' : 'text-yellow-500 animate-pulse'}`}>
                             {hasModel ? '已加载' : '生成中...'}
                         </span>
+                        {/* 💥 耗时显示区域 */}
+                        {executionTime > 0 && (
+                            <>
+                                <span className="text-gray-500">生成耗时:</span>
+                                <span className="col-span-2 text-blue-400 font-mono font-bold">
+                                    {executionTime} ms ({(executionTime / 1000).toFixed(2)}s)
+                                </span>
+                            </>
+                        )}
                     </div>
 
                     {/* 2. 原始 Prompt (这个应该始终显示，因为它来自用户输入) */}
@@ -371,7 +380,8 @@ const GeometricModelingPage = () => {
   const loadedFileRef = useRef(null);
   // 💥 关键：添加 viewerRef
   const viewerRef = useRef(null);
-  
+  // 💥 新增状态：用于记录耗时
+  const [executionTime, setExecutionTime] = useState(0);
   // 3D 交互状态
   const [highlightState, setHighlightState] = useState({ name: null, isHighlighted: false });
   const [partVisibility, setPartVisibility] = useState({});
@@ -565,6 +575,9 @@ const GeometricModelingPage = () => {
 
     let userMessageContent = inputValue;
     let filesForRequest = [];
+    // --- ⏱️ 计时开始 (使用高精度时间) ---
+    const startTime = performance.now();
+    setExecutionTime(0); // 清空上一轮时间，让用户感知到新任务开始了
 
     addMessage({ role: 'user', content: userMessageContent });
     setInputValue('');
@@ -642,10 +655,36 @@ const GeometricModelingPage = () => {
         },
         onError: (error) => {
             console.error("SSE error:", error);
+            const endTime = performance.now();
+            const duration = Math.round(endTime - startTime);
+            console.warn(`[Geometry Task Failed] Duration: ${duration}ms`, error);
+
+            // 建议：即使失败也设置耗时，或者设置一个特殊的失败标记
+            // setExecutionTime(duration); // 可选：如果你想让用户看到即使失败也花了多少时间
+            
             updateLastAiMessage({ finalData: { answer: "请求出错。", metadata: {} } });
             setIsStreaming(false);
         },
-        onClose: () => setIsStreaming(false),
+        onClose: () => {
+            // --- ⏱️ 计时结束 (成功) ---
+            const endTime = performance.now();
+            const duration = Math.round(endTime - startTime);
+            
+            // 1. 更新 UI 状态
+            setExecutionTime(duration);
+            
+            // 2. 纯前端日志记录 (不调用后端 API)
+            // 使用特殊的样式打印，方便开发者在 F12 控制台一眼看到
+            console.log(
+                `%c [CAutoD Performance] %c Task Completed %c ${duration}ms `,
+                'background:#35495e ; padding: 1px; border-radius: 3px 0 0 3px;  color: #fff',
+                'background:#41b883 ; padding: 1px; border-radius: 0 3px 3px 0;  color: #fff',
+                'background:transparent; color: #333; font-weight: bold'
+            );
+            // ------------------------
+            
+            setIsStreaming(false);
+        },
     });
   };
   // 💥 关键修复：如果正在加载历史消息，显示加载圈，而不是直接显示空白初始页
@@ -706,7 +745,12 @@ return (
                 />
 
                 <MeshesPanel parts={modelParts} visibility={partVisibility} onToggleVisibility={handleTogglePartVisibility} highlightState={highlightState} onHighlight={handlePartClick} />
-                <DetailsPanel metadata={latestMetadata} prompt={lastUserPrompt} />
+                {/* 💥 将 executionTime 传入 DetailsPanel */}
+                <DetailsPanel 
+                    metadata={latestMetadata} 
+                    prompt={lastUserPrompt} 
+                    executionTime={executionTime} 
+                />
 
                 {currentStlUrl ? (
                     <ThreeDViewer 
