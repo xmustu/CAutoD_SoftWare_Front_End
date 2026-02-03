@@ -41,7 +41,7 @@ const useConversationStore = create((set, get) => ({
   // --- 最终重构：使用函数式 set 保证状态更新的原子性 ---
   updateLastAiMessage: (update) => {
     console.log("🔄 Store.updateLastAiMessage 被调用, update:", update);
-    
+
     set((state) => {
       const lastMessage = state.messages[state.messages.length - 1];
 
@@ -60,24 +60,24 @@ const useConversationStore = create((set, get) => ({
         }
 
         let updatedMessage = { ...msg };
-       // 初始化元数据，确保不是 null
+        // 初始化元数据，确保不是 null
         updatedMessage.metadata = updatedMessage.metadata || {};
         // 1. 处理文本块
         if (update.textChunk !== undefined) {
           // 💥 添加日志：确认更新是否被触发
-            console.log("✅ Store: 合并文本块:", update.textChunk);
-            console.log("📝 更新前的 content:", updatedMessage.content);
+          console.log("✅ Store: 合并文本块:", update.textChunk);
+          console.log("📝 更新前的 content:", updatedMessage.content);
           updatedMessage.content =
             (updatedMessage.content || "") + update.textChunk;
-            console.log("📝 更新后的 content:", updatedMessage.content);
+          console.log("📝 更新后的 content:", updatedMessage.content);
         }
         // 💥 【新增/修改】处理流中传输的独立元数据（用于实时进度）
         if (update.metadata !== undefined) {
-            updatedMessage.metadata = { 
-                ...updatedMessage.metadata, 
-                ...update.metadata 
-            };
-            console.log("Store: Metadata updated (Progress/Info)", updatedMessage.metadata);
+          updatedMessage.metadata = {
+            ...updatedMessage.metadata,
+            ...update.metadata
+          };
+          console.log("Store: Metadata updated (Progress/Info)", updatedMessage.metadata);
         }
         // 2. 处理图片块
         if (update.image !== undefined) {
@@ -96,20 +96,20 @@ const useConversationStore = create((set, get) => ({
           updatedMessage.parts = [...(updatedMessage.parts || []), newPart];
         }
 
-       // 3. 处理结束信号 (修改 metadata 的处理逻辑)
-        if (update.finalData !== undefined) {
+        // 3. 处理结束信号 (修改 metadata 的处理逻辑)
+        if (update.finalData !== undefined) {
           console.log("conversationStore: Final Metadata Content:", update.finalData.metadata); // 👈 打印这一行
-          console.log(
-            "conversationStore: Updating with finalData:",
-            update.finalData
-          );
-          updatedMessage.content = update.finalData.answer;
-          
-            // 💥 【关键修改】合并 finalData 中的元数据
-          updatedMessage.metadata = { 
-                ...updatedMessage.metadata, // 保留之前的进度信息
-                ...update.finalData.metadata // 覆盖/新增最终结果文件信息
-            };
+          console.log(
+            "conversationStore: Updating with finalData:",
+            update.finalData
+          );
+          updatedMessage.content = update.finalData.answer;
+
+          // 💥 【关键修改】合并 finalData 中的元数据
+          updatedMessage.metadata = {
+            ...updatedMessage.metadata, // 保留之前的进度信息
+            ...update.finalData.metadata // 覆盖/新增最终结果文件信息
+          };
           if (update.finalData.suggested_questions) {
             updatedMessage.suggested_questions =
               update.finalData.suggested_questions;
@@ -231,7 +231,12 @@ const useConversationStore = create((set, get) => ({
   },
 
   fetchMessagesForTask: async (taskId, conversationId) => {
-    if (!taskId) return;
+    if (!taskId) {
+      console.log('⚠️ Store: fetchMessagesForTask - no taskId');
+      return Promise.resolve();
+    }
+
+    console.log('📥 Store: fetchMessagesForTask called', { taskId, conversationId });
 
     // 1. 停止任何可能正在进行的轮询
     get().stopPolling();
@@ -241,6 +246,8 @@ const useConversationStore = create((set, get) => ({
       try {
         const response = await getTaskHistoryAPI(taskId);
         const messages = response.message || [];
+
+        console.log('✅ Store: Messages loaded', { count: messages.length });
 
         set({
           messages: messages,
@@ -280,6 +287,9 @@ const useConversationStore = create((set, get) => ({
       }, 2000); // 设置2秒的轮询间隔
       set({ pollingIntervalId: intervalId });
     }
+
+    console.log('✅ Store: fetchMessagesForTask completed');
+    return Promise.resolve();
   },
 
   removeTask: (taskId) =>

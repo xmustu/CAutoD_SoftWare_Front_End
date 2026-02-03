@@ -16,8 +16,9 @@ import DesignOptimizationPage from './pages/DesignOptimizationPage';
 import SoftwareInterfacePage from './pages/SoftwareInterfacePage';
 import DifyTestPage from './pages/DifyTestPage';
 import HistoryPage from './pages/HistoryPage';
-import TaskListPage from './pages/TaskListPage';
-
+//import TaskListPage from './pages/TaskListPage';
+import TaskContainerPage from './pages/TaskContainerPage';
+import TaskDetailPage from './pages/TaskDetailPage';
 // 管理员页面
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import UserManagementPage from './pages/UserManagementPage';
@@ -61,7 +62,8 @@ function App() {
               <Route path="software-interface" element={<SoftwareInterfacePage />} />
               <Route path="dify-test" element={<DifyTestPage />} />
               <Route path="history" element={<HistoryPage />} />
-              <Route path="tasks" element={<TaskListPage />} />
+              <Route path="tasks" element={<TaskContainerPage />} />
+              <Route path="tasks/:taskId" element={<TaskDetailPage />} />
             </Route>
             
             {/* 管理员路由 */}

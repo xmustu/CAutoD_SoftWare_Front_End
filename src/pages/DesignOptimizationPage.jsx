@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,7 +52,7 @@ const ConversationSelector = () => {
     <div className="mb-4">
       <Select value={activeConversationId} onValueChange={setActiveConversationId}>
         <SelectTrigger className="w-[280px]">
-          <SelectValue placeholder="选择一个对话..." />
+          <SelectValue placeholder="请选择一个会话" />
         </SelectTrigger>
         <SelectContent>
           {conversations.map(conv => (
@@ -65,17 +66,17 @@ const ConversationSelector = () => {
   );
 };
 const WorkflowGuide = ({ queueLength, runningTasks }) => {
-  return (
-    <div className="text-left max-w-2xl mx-auto bg-green-50 p-4 rounded-lg border border-green-200 mb-8">
-      <h2 className="text-lg font-semibold text-green-800 mb-2">第二步：设计优化</h2>
-      <ol className="list-decimal list-inside text-gray-700 space-y-1">
-        <li>请先在【几何建模】页面完成初始模型的设计和导出。</li>
-        <li>上传您在 SolidWorks 中处理过的 <strong>.sldprt</strong> 文件。</li>
-        <li>点击下方的“开始优化”按钮，系统将对上传的模型进行分析与优化。</li>
-        <li>系统将执行优化，您可以根据结果进行多轮迭代，直到满意为止。</li>
-      </ol>
-    </div>
-  );
+  return (
+    <div className="text-left max-w-2xl mx-auto bg-green-50 p-4 rounded-lg border border-green-200 mb-8">
+      <h2 className="text-lg font-semibold text-green-800 mb-2">第二步：设计优化</h2>
+      <ol className="list-decimal list-inside text-gray-700 space-y-1">
+        <li>请先在【几何建模】页面完成初始模型的设计和导出。</li>
+        <li>上传您在 SolidWorks 中处理过的 <strong>.sldprt</strong> 文件。</li>
+        <li>点击下方的“开始优化”按钮，系统将对上传的模型进行分析与优化。</li>
+        <li>系统将执行优化，您可以根据结果进行多轮迭代，直到满意为止。</li>
+      </ol>
+    </div>
+  );
 };
 
 const fixedParamsDefinitions = [
@@ -91,13 +92,13 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
   const prevParamsRef = React.useRef();
   // 【新增状态】用于图片放大预览
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
-  const [previewImageUrl, setPreviewImageUrl] = useState(''); 
+  const [previewImageUrl, setPreviewImageUrl] = useState('');
   const [previewImageAlt, setPreviewImageAlt] = useState('');
   // 图片点击处理器
   const handleImageClick = (url, alt) => {
-      setPreviewImageUrl(url);
-      setPreviewImageAlt(alt);
-      setIsImagePreviewOpen(true);
+    setPreviewImageUrl(url);
+    setPreviewImageAlt(alt);
+    setIsImagePreviewOpen(true);
   };
   // 状态，用于保存用户的输入和范围
   const [ranges, setRanges] = useState({});
@@ -144,8 +145,8 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
 
   }, [params]);
 
-// ParameterForm.jsx 内部的 useEffect 修复
-// --- 修复点 1：ranges 初始化逻辑 (阻止页面刷新覆盖用户输入) ---
+  // ParameterForm.jsx 内部的 useEffect 修复
+  // --- 修复点 1：ranges 初始化逻辑 (阻止页面刷新覆盖用户输入) ---
   useEffect(() => {
     if (extendedParams.length > 0) {
       setRanges(currentRanges => {
@@ -273,7 +274,7 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
                   alt={image.altText}
                   className="w-full h-auto max-h-48 object-contain rounded cursor-pointer" // <-- 添加 cursor-pointer
                   // 💥 绑定点击事件 💥
-                  onClick={() => handleImageClick(image.imageUrl, image.altText)} 
+                  onClick={() => handleImageClick(image.imageUrl, image.altText)}
                 />
                 <p className="text-sm text-center mt-1">
                   {image.altText || image.fileName}
@@ -366,7 +367,7 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
       </div>
       {/* 💥 添加 Dialog 组件用于图片预览 💥 */}
       <Dialog open={isImagePreviewOpen} onOpenChange={setIsImagePreviewOpen}>
-        <DialogContent className="max-w-screen-xl p-4 sm:max-w-5xl md:max-w-6xl"> 
+        <DialogContent className="max-w-screen-xl p-4 sm:max-w-5xl md:max-w-6xl">
           <DialogHeader className="p-0">
             <DialogTitle>{previewImageAlt || "模型截图预览"}</DialogTitle>
           </DialogHeader>
@@ -387,6 +388,7 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
 
 
 const DesignOptimizationPage = () => {
+  const location = useLocation();
   const {
     messages,
     addMessage,
@@ -395,6 +397,7 @@ const DesignOptimizationPage = () => {
     activeTaskId,
     createTask,
     updateLastAiMessage, // 使用新的统一 action
+    fetchMessagesForTask, // 💥 新增: 用于加载历史对话
   } = useConversationStore();
   const [isTaskRunning, setIsTaskRunning] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -409,43 +412,64 @@ const DesignOptimizationPage = () => {
   const [formScreenshot, setFormScreenshot] = useState([]); // 用于 ParameterForm (只存 screenshot)
   // const [chatResultImages, setChatResultImages] = useState([]); // 用于 ConversationDisplay (曲线图等)
   const [queueLength, setQueueLength] = useState(null); // 等待中的任务数
-  const [runningTasks, setRunningTasks] = useState(0); // 运行中的任务数
+  const [runningTasks, setRunningTasks] = useState(0); // 运行中的任务数
   const [queuePosition, setQueuePosition] = useState(null); // <-- 修复 1：添加 queuePosition** 
   const [currentTaskId, setCurrentTaskId] = useState(null); // <-- 修复 2：添加 currentTaskId**
   // 新增：控制参数配置模态框的状态
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  // 💥 新增: 跟踪是否正在从任务列表加载历史对话
+  const [isLoadingFromTaskList, setIsLoadingFromTaskList] = useState(false);
 
-// 轮询获取队列长度
-    useEffect(() => {
+  // 💥 新增: 从任务列表跳转时自动加载历史对话
+  useEffect(() => {
+    if (location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId) {
+      console.log('🔄 从任务列表跳转,自动加载历史对话:', location.state);
+
+      // **关键修复**: 立即设置loading状态,防止显示空白页面
+      setIsLoadingFromTaskList(true);
+
+      const { taskId, conversationId } = location.state;
+      fetchMessagesForTask(taskId, conversationId).then(() => {
+        // 加载完成后清除loading状态
+        setIsLoadingFromTaskList(false);
+      });
+
+      // 清除 state,避免刷新页面时重复加载
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, fetchMessagesForTask]);
+
+  // 轮询获取队列长度
+  useEffect(() => {
     // 默认轮询间隔 (非任务执行期间)
     const IDLE_POLLING_INTERVAL = 30000; // 30 秒
     // 任务执行期间的轮询间隔
     const ACTIVE_POLLING_INTERVAL = 10000; // 10 秒
-    
+
     let timeoutId;
 
     const fetchQueueStatus = async () => {
-        try {
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/tasks/optimize/queue_length`);
-            
-            const newQueueLength = res.data.length ?? 0;
-            const newRunningTasks = res.data.running ?? 0;
-            
-            setQueueLength(newQueueLength);
-            setRunningTasks(newRunningTasks);
-            
-            // 根据是否有运行任务决定下一个间隔
-            const nextInterval = (newRunningTasks > 0 || newQueueLength > 0) 
-                                 ? ACTIVE_POLLING_INTERVAL 
-                                 : IDLE_POLLING_INTERVAL;
-            
-            timeoutId = setTimeout(fetchQueueStatus, nextInterval);
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_API_URL}/tasks/optimize/queue_length`);
 
-        } catch (err) {
-            console.error("获取优化队列长度失败，下次尝试间隔 30 秒:", err);
-            // 失败时，等待较长时间后再试，避免错误时加速轮询
-            timeoutId = setTimeout(fetchQueueStatus, IDLE_POLLING_INTERVAL);
-        }
+        const newQueueLength = res.data.length ?? 0;
+        const newRunningTasks = res.data.running ?? 0;
+
+        setQueueLength(newQueueLength);
+        setRunningTasks(newRunningTasks);
+
+        // 根据是否有运行任务决定下一个间隔
+        const nextInterval = (newRunningTasks > 0 || newQueueLength > 0)
+          ? ACTIVE_POLLING_INTERVAL
+          : IDLE_POLLING_INTERVAL;
+
+        timeoutId = setTimeout(fetchQueueStatus, nextInterval);
+
+      } catch (err) {
+        console.error("获取优化队列长度失败，下次尝试间隔 30 秒:", err);
+        // 失败时，等待较长时间后再试，避免错误时加速轮询
+        timeoutId = setTimeout(fetchQueueStatus, IDLE_POLLING_INTERVAL);
+      }
     };
 
     // 首次启动轮询
@@ -453,11 +477,11 @@ const DesignOptimizationPage = () => {
 
     // 清理函数：在组件卸载时清除定时器
     return () => {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-}, []); // 依赖数组为空，让它在组件挂载时始终启动，但其内部会根据队列状态动态调整频率。
+  }, []); // 依赖数组为空，让它在组件挂载时始终启动，但其内部会根据队列状态动态调整频率。
 
   // 恢复参数提取逻辑
   useEffect(() => {
@@ -491,55 +515,55 @@ const DesignOptimizationPage = () => {
     }
 
   }, [messages]);
-   
+
   const handleParametersExtracted = useCallback((params) => {
     console.log("DesignOptimizationPage: Parameters extracted from AI message:", params);
     setOptimizableParams(params);
     // 💥 核心修复：一旦提取到参数，意味着AI进入了“等待用户配置”的阶段
     // 我们必须手动将运行状态设为 false，否则按钮会被隐藏
-    setIsTaskRunning(false); 
+    setIsTaskRunning(false);
     //setIsStreaming(false); // 可以顺便停止流式加载动画
   }, []);
 
-const handleImagesExtracted = useCallback((images) => {
+  const handleImagesExtracted = useCallback((images) => {
     // 1. 筛选出模型截图 (这是唯一需要用于侧边栏的状态)
     const screenshots = images.filter(img => img.altText === "screenshot");
-    
+
     // 2. 更新 ParameterForm 的状态 (只保留最新的截图)
     //  阻止无限循环：使用防御性检查
     setFormScreenshot(prev => {
-        const newShot = screenshots.slice(-1);
-        if (JSON.stringify(prev) === JSON.stringify(newShot)) {
-            return prev;
-        }
-        return newShot;
-    }); 
+      const newShot = screenshots.slice(-1);
+      if (JSON.stringify(prev) === JSON.stringify(newShot)) {
+        return prev;
+      }
+      return newShot;
+    });
     //  不再处理曲线图。让 updateLastAiMessage 内部逻辑处理所有其他图片。
-}, []);
+  }, []);
   const handleRangesSubmit = async (ranges) => {
-    console.log("Submitted ranges:", ranges);
-    setIsSecondRoundCompleted(false);
+    console.log("Submitted ranges:", ranges);
+    setIsSecondRoundCompleted(false);
 
-    try {
-      await submitOptimizationParamsAPI({
-        conversation_id: activeConversationId,
-        task_id: activeTaskId,
-        params: ranges,
-      });
-      // 确保 currentTaskId 和弹窗打开 ***
-      setCurrentTaskId(String(activeTaskId)); 
-      
-      // 🚨 核心修改：设置初始排队位置
-      // 如果当前有等待任务，新任务排在队尾 (queueLength + 1)
-      const initialQueuePosition = (queueLength === null || queueLength === 0) ? 0 : queueLength + 1;
-      setQueuePosition(initialQueuePosition); 
-      
-      setIsQueueDialogOpen(true); 
-    } catch (error) {
-      console.error("Failed to submit optimization parameters:", error);
-      toast.error("提交参数失败，请重试。");
-    }
-  };
+    try {
+      await submitOptimizationParamsAPI({
+        conversation_id: activeConversationId,
+        task_id: activeTaskId,
+        params: ranges,
+      });
+      // 确保 currentTaskId 和弹窗打开 ***
+      setCurrentTaskId(String(activeTaskId));
+
+      // 🚨 核心修改：设置初始排队位置
+      // 如果当前有等待任务，新任务排在队尾 (queueLength + 1)
+      const initialQueuePosition = (queueLength === null || queueLength === 0) ? 0 : queueLength + 1;
+      setQueuePosition(initialQueuePosition);
+
+      setIsQueueDialogOpen(true);
+    } catch (error) {
+      console.error("Failed to submit optimization parameters:", error);
+      toast.error("提交参数失败，请重试。");
+    }
+  };
 
 
   const handleStartOptimization = async () => {
@@ -567,13 +591,13 @@ const handleImagesExtracted = useCallback((images) => {
         taskIdToUse = newTask.task_id;
       }
     } catch (error) {
-        console.error("Failed to create task:", error);
-        updateLastAiMessage({
-            finalData: { answer: "抱歉，创建任务时出现错误。", metadata: {} },
-        });
-        setIsTaskRunning(false); // 任务失败，设置为false
-        setIsStreaming(false);
-        return;
+      console.error("Failed to create task:", error);
+      updateLastAiMessage({
+        finalData: { answer: "抱歉，创建任务时出现错误。", metadata: {} },
+      });
+      setIsTaskRunning(false); // 任务失败，设置为false
+      setIsStreaming(false);
+      return;
     }
 
     // 2. 上传文件，并附带会话和任务ID
@@ -594,7 +618,7 @@ const handleImagesExtracted = useCallback((images) => {
       setIsStreaming(false);
       return;
     }
-    
+
     try {
       const requestData = {
         task_type: taskType,
@@ -614,11 +638,11 @@ const handleImagesExtracted = useCallback((images) => {
             console.log("🔍 完整 data 对象:", data);
             console.log("🔍 data.text 值:", data.text);
             console.log("🔍 typeof data:", typeof data);
-            
+
             // 尝试提取文本内容
             const textContent = data.text || data;
             console.log("🔍 提取的文本内容:", textContent);
-            
+
             if (textContent) {
               updateLastAiMessage({ textChunk: textContent });
             } else {
@@ -724,28 +748,28 @@ const handleImagesExtracted = useCallback((images) => {
   };
 
   if (messages.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full bg-white pb-40">
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-white pb-40">
         <div className="w-full max-w-2xl text-center">
           <h1 className="text-4xl font-bold mb-8">上传文件以开始优化</h1>
-          
+
           {/* ✅ 使用新版队列横幅 */}
           <QueueStatusBanner queueLength={queueLength} runningTasks={runningTasks} />
-          
+
           <WorkflowGuide />
           <ConversationSelector />
-          
+
           {/* ✅ 使用新版上传组件 */}
           <InteractiveFileUpload
             onFileSelect={setSelectedFile}
-            onStart={handleStartOptimization} 
+            onStart={handleStartOptimization}
             selectedFile={selectedFile}
             isStreaming={isStreaming}
             disabled={!activeConversationId || isTaskRunning}
           />
         </div>
       </div>
-      
+
     );
   }
 
@@ -753,40 +777,40 @@ const handleImagesExtracted = useCallback((images) => {
     <>
       {/* 顶部状态条 */}
       <div className="w-full max-w-4xl mx-auto mb-4 relative z-10">
-         <QueueStatusBanner queueLength={queueLength} runningTasks={runningTasks} />
+        <QueueStatusBanner queueLength={queueLength} runningTasks={runningTasks} />
       </div>
 
       {/* 主聊天区域 - 现在占据全高，去掉了底部的 Panel */}
       <div className="flex flex-col h-full bg-white relative overflow-hidden rounded-lg border shadow-sm">
-        
+
         {/* 如果有提取到参数，并且没有在运行，显示“打开配置”的悬浮按钮或顶部栏 */}
         {optimizableParams.length > 0 && (
-        <FloatingConfigButton onClick={() => setIsConfigModalOpen(true)} />
-     )}
+          <FloatingConfigButton onClick={() => setIsConfigModalOpen(true)} />
+        )}
         <div className="flex-grow overflow-hidden">
-          <ConversationDisplay 
-            messages={messages} 
-            isLoading={isLoadingMessages}
-            onParametersExtracted={handleParametersExtracted} 
-            onImagesExtracted={handleImagesExtracted} 
+          <ConversationDisplay
+            messages={messages}
+            isLoading={isLoadingMessages || isLoadingFromTaskList}
+            onQuestionClick={() => { }}
+            onImagesExtracted={handleImagesExtracted}
             filterTaskType="optimize"
           />
         </div>
 
         {/* 底部保留文件上传条 (仅当参数未提取时，或作为备选操作) */}
         {optimizableParams.length === 0 && !isTaskRunning && (
-             <div className="p-4 border-t bg-gray-50">
-                 <InteractiveFileUpload
-                  onFileSelect={setSelectedFile}
-                  onStart={handleStartOptimization}
-                  selectedFile={selectedFile}
-                  isStreaming={isStreaming}
-                  disabled={!activeConversationId || isTaskRunning}
-                />
-             </div>
+          <div className="p-4 border-t bg-gray-50">
+            <InteractiveFileUpload
+              onFileSelect={setSelectedFile}
+              onStart={handleStartOptimization}
+              selectedFile={selectedFile}
+              isStreaming={isStreaming}
+              disabled={!activeConversationId || isTaskRunning}
+            />
+          </div>
         )}
       </div>
-      
+
       {/* --- 核心修改：使用 Modal 替代 Panel --- */}
       <OptimizationConfigModal
         isOpen={isConfigModalOpen}
@@ -796,7 +820,7 @@ const handleImagesExtracted = useCallback((images) => {
         isTaskRunning={isTaskRunning}
         displayedImages={formScreenshot} // 传入截图供 Modal 内部展示
       />
-       
+
       <Dialog open={isQueueDialogOpen} onOpenChange={setIsQueueDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -808,10 +832,10 @@ const handleImagesExtracted = useCallback((images) => {
               {queuePosition === null
                 ? "正在获取队列信息，请稍候..."
                 : queuePosition === 0 && runningTasks > 0
-                ? "当前任务正在执行中。请查看聊天记录。"
-                : queuePosition > 0
-                ? `前方还有 ${queuePosition} 个任务，请耐心等待。`
-                : "任务状态异常或已完成。"}
+                  ? "当前任务正在执行中。请查看聊天记录。"
+                  : queuePosition > 0
+                    ? `前方还有 ${queuePosition} 个任务，请耐心等待。`
+                    : "任务状态异常或已完成。"}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

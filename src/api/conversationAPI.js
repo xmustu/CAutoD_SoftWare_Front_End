@@ -137,4 +137,15 @@ export const deleteConversationAPI = (conversationId) => {
 //   return data; // 返回数组
 // }
 
-
+/**
+ * 获取任务列表（支持分页和状态筛选）
+ * @param {Object} params - 查询参数
+ * @param {string} [params.task_type] - 任务类型（可选）
+ * @param {string} [params.status] - 任务状态（可选，支持逗号分隔的多状态）
+ * @param {number} [params.limit=20] - 每页数量
+ * @param {number} [params.offset=0] - 偏移量
+ * @returns {Promise<Array>} 任务数组
+ */
+export const getTasksWithPaginationAPI = (params) => {
+  return post('/tasks/list', params);
+};
