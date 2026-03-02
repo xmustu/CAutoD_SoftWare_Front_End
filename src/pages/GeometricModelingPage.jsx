@@ -241,8 +241,8 @@ const MeshesPanel = ({ parts, visibility, onToggleVisibility, highlightState, on
                             <div
                                 key={partName}
                                 className={`group flex items-center justify-between p-1.5 rounded cursor-pointer text-xs transition-colors ${highlightState.name === partName && highlightState.isHighlighted
-                                    ? 'bg-blue-600 text-white'
-                                    : 'hover:bg-white/10'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'hover:bg-white/10'
                                     }`}
                                 onClick={() => onHighlight(partName)}
                             >
@@ -381,8 +381,6 @@ const GeometricModelingPage = () => {
     const viewerRef = useRef(null);
     // 💥 新增状态：用于记录耗时
     const [executionTime, setExecutionTime] = useState(0);
-    // 💥 新增: 跟踪是否正在从任务列表加载历史对话
-    const [isLoadingFromTaskList, setIsLoadingFromTaskList] = useState(false);
     // 3D 交互状态
     const [highlightState, setHighlightState] = useState({ name: null, isHighlighted: false });
     const [partVisibility, setPartVisibility] = useState({});
@@ -401,42 +399,8 @@ const GeometricModelingPage = () => {
     const viewerContainerRef = useRef(null);
 
     const { user } = useUserStore();
-    const { messages, addMessage, updateLastAiMessage, isLoadingMessages, activeTaskId, activeConversationId, ensureConversation, createTask, fetchMessagesForTask } = useConversationStore();
+    const { messages, addMessage, updateLastAiMessage, isLoadingMessages, activeTaskId, activeConversationId, ensureConversation, createTask } = useConversationStore();
     const { fetchHistory } = useOutletContext();
-
-    // 💥 新增: 从任务列表跳转时自动加载历史对话
-    const hasLoadedFromTaskList = useRef(false);
-
-    useEffect(() => {
-        if (location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId && !hasLoadedFromTaskList.current) {
-            console.log('🔄 GeometricModelingPage: 从任务列表跳转', location.state);
-
-            // 标记已加载,防止重复执行
-            hasLoadedFromTaskList.current = true;
-
-            // **关键修复**: 立即设置loading状态,防止显示空白页面
-            setIsLoadingFromTaskList(true);
-            console.log('⏳ GeometricModelingPage: 设置isLoadingFromTaskList=true');
-
-            const { taskId, conversationId } = location.state;
-
-            // 调用 store 的 fetchMessagesForTask 方法加载历史消息
-            console.log('📞 GeometricModelingPage: 调用fetchMessagesForTask', { taskId, conversationId });
-            fetchMessagesForTask(taskId, conversationId).then(() => {
-                // 加载完成后清除loading状态
-                console.log('✅ GeometricModelingPage: 完成');
-                setIsLoadingFromTaskList(false);
-            }).catch(err => {
-                console.error('❌ GeometricModelingPage: 错误', err);
-                setIsLoadingFromTaskList(false);
-            });
-
-            // 清除 state,避免刷新页面时重复加载
-            window.history.replaceState({}, document.title);
-        } else {
-            console.log('ℹ️ GeometricModelingPage: location.state不满足条件或已加载过', { state: location.state, hasLoaded: hasLoadedFromTaskList.current });
-        }
-    }, [location, fetchMessagesForTask]);
 
     const handleShowModel = async (fileName) => {
         if (!activeTaskId || !activeConversationId || !fileName) return;
@@ -722,17 +686,15 @@ const GeometricModelingPage = () => {
             },
         });
     };
-    // 💥 关键修复：如果正在加载历史消息或从任务列表加载，显示加载圈
-    if (isLoadingMessages || isLoadingFromTaskList) {
+    // 💥 关键修复：如果正在加载历史消息，显示加载圈，而不是直接显示空白初始页
+    if (isLoadingMessages) {
         return (
             <div className="flex items-center justify-center h-[calc(100vh-64px)]">
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
             </div>
         );
     }
-    // 只有当确实没有消息且没有activeTaskId且不是从任务列表跳转时,才显示初始页面
-    const isFromTaskList = location.state?.fromTaskList;
-    if (messages.length === 0 && !activeTaskId && !isFromTaskList) {
+    if (messages.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)] bg-white pb-20 overflow-y-auto">
                 <div className="w-full max-w-2xl text-center px-4">

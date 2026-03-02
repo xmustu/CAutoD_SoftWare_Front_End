@@ -140,7 +140,7 @@ const TaskCard = ({
 
                     {/* 第四行：时间信息 */}
                     <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <span>创建: {format(new Date(task.created_at), 'yyyy-MM-dd HH:mm')}</span>
+                        <span>创建: {task.created_at ? format(new Date(task.created_at), 'yyyy-MM-dd HH:mm') : '未知'}</span>
                         {task.updated_at && (
                             <span>更新: {format(new Date(task.updated_at), 'yyyy-MM-dd HH:mm')}</span>
                         )}

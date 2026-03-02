@@ -231,12 +231,7 @@ const useConversationStore = create((set, get) => ({
   },
 
   fetchMessagesForTask: async (taskId, conversationId) => {
-    if (!taskId) {
-      console.log('⚠️ Store: fetchMessagesForTask - no taskId');
-      return Promise.resolve();
-    }
-
-    console.log('📥 Store: fetchMessagesForTask called', { taskId, conversationId });
+    if (!taskId) return;
 
     // 1. 停止任何可能正在进行的轮询
     get().stopPolling();
@@ -246,8 +241,6 @@ const useConversationStore = create((set, get) => ({
       try {
         const response = await getTaskHistoryAPI(taskId);
         const messages = response.message || [];
-
-        console.log('✅ Store: Messages loaded', { count: messages.length });
 
         set({
           messages: messages,
@@ -287,9 +280,6 @@ const useConversationStore = create((set, get) => ({
       }, 2000); // 设置2秒的轮询间隔
       set({ pollingIntervalId: intervalId });
     }
-
-    console.log('✅ Store: fetchMessagesForTask completed');
-    return Promise.resolve();
   },
 
   removeTask: (taskId) =>

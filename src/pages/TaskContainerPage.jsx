@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { post } from '@/api/index';
-import { deleteTaskAndMessagesAPI } from '@/api/conversationAPI';
+import { deleteTaskAndMessagesAPI, getHistoryAPI } from '@/api/conversationAPI';
 import TaskCard from '@/components/TaskCard';
 import Pagination from '@/components/Pagination';
 import useUserStore from '@/store/userStore';
@@ -28,14 +28,14 @@ const TaskContainerPage = () => {
     // 分页状态
     const [queuePagination, setQueuePagination] = useState({
         currentPage: 1,
-        limit: 5,  // 任务队列每页5个
+        limit: 20,
         offset: 0,
         hasMore: false
     });
 
     const [completedPagination, setCompletedPagination] = useState({
         currentPage: 1,
-        limit: 5,  // 完成任务每页5个
+        limit: 20,
         offset: 0,
         hasMore: false
     });
@@ -80,32 +80,60 @@ const TaskContainerPage = () => {
 
         try {
             setLoadingQueue(true);
-            const offset = (page - 1) * queuePagination.limit;
 
-            // 查询所有非完成状态的任务（包括pending, queued, processing等）
-            const fetchLimit = 50;  // 降低到50避免后端422错误
-            const allTasks = await post('/tasks/list', {
-                limit: fetchLimit,
-                offset: 0
-            });
+            console.log('🌐 调用API: /chat/history', { userId: user.user_id });
 
-            // 调试：打印所有任务
-            console.log('📋 所有任务列表:', allTasks);
+            // 使用 /chat/history API 获取所有任务历史
+            const response = await getHistoryAPI(user.user_id);
 
-            // 客户端过滤：只保留非done状态的任务
-            const tasks = allTasks.filter(task => task.status !== 'done');
+            console.log('📦 API完整响应:', response);
+            console.log('📦 响应类型:', typeof response);
+            console.log('📦 response.history:', response.history);
 
-            console.log('✅ 过滤后的进行中任务:', tasks);
+            const allTasks = response.history || [];
 
-            setQueueTasks(tasks.slice(offset, offset + queuePagination.limit));
+            // 🔧 数据转换：将后端字段映射到前端期望的字段
+            const mappedTasks = allTasks.map(task => ({
+                ...task,
+                // 添加缺失的字段
+                status: 'running',  // 默认状态，因为history里的都是进行中的任务
+                created_at: task.last_time || task.last_timestamp,  // 使用last_time作为创建时间
+                updated_at: task.last_time || task.last_timestamp,  // 使用last_time作为更新时间
+            }));
+
+            // 打印第一个任务的数据结构用于调试
+            if (mappedTasks.length > 0) {
+                console.log('🔍 第一个任务的原始数据:', allTasks[0]);
+                console.log('🔍 第一个任务的映射后数据:', mappedTasks[0]);
+                console.log('  - task_id:', mappedTasks[0].task_id);
+                console.log('  - conversation_id:', mappedTasks[0].conversation_id);
+                console.log('  - status:', mappedTasks[0].status);
+                console.log('  - created_at:', mappedTasks[0].created_at);
+            }
+            console.log('📋 所有任务列表:', mappedTasks);
+
+            // 客户端过滤：只保留非完成状态的任务（history API返回的都是进行中的）
+            const queueTasksFiltered = mappedTasks.filter(task =>
+                task.status !== 'done' && task.status !== 'failed'
+            );
+
+            console.log('✅ 过滤后的进行中任务:', queueTasksFiltered);
+
+            // 客户端分页
+            const startIndex = (page - 1) * queuePagination.limit;
+            const endIndex = startIndex + queuePagination.limit;
+            const paginatedTasks = queueTasksFiltered.slice(startIndex, endIndex);
+
+            setQueueTasks(paginatedTasks);
             setQueuePagination(prev => ({
                 ...prev,
                 currentPage: page,
-                offset: offset,
-                hasMore: tasks.length > offset + queuePagination.limit
+                offset: startIndex,
+                hasMore: endIndex < queueTasksFiltered.length
             }));
         } catch (error) {
-            console.error('获取任务队列失败:', error);
+            console.error('❌ 获取任务队列失败:', error);
+            console.error('❌ 错误详情:', error.response);
         } finally {
             setLoadingQueue(false);
         }
@@ -120,36 +148,34 @@ const TaskContainerPage = () => {
         try {
             setLoadingCompleted(true);
 
-            // 获取更多的已完成任务以查看是否有optimize类型
-            const fetchLimit = 50;  // 使用50作为安全的limit值
-            const allCompletedTasks = await post('/tasks/list', {
+            const offset = (page - 1) * completedPagination.limit;
+
+            console.log('🌐 调用API: /tasks/list (已完成)', { offset, limit: completedPagination.limit });
+
+            // 使用 /tasks/list API 获取已完成任务（从MySQL）
+            const tasks = await post('/tasks/list', {
                 status: 'done',
-                limit: fetchLimit,
+                limit: 50,  // 获取足够多的数据
                 offset: 0
             });
 
-            // 调试：打印已完成任务的类型分布
-            console.log(`📊 已完成任务列表(前${fetchLimit}个):`, allCompletedTasks);
-            const taskTypeCounts = {};
-            allCompletedTasks.forEach(task => {
-                taskTypeCounts[task.task_type] = (taskTypeCounts[task.task_type] || 0) + 1;
-            });
-            console.log('📈 任务类型统计:', taskTypeCounts);
-            console.log(`🔢 已完成任务总数: ${allCompletedTasks.length}`);
+            console.log('📊 已完成任务列表:', tasks);
 
-            // 分页处理
-            const offset = (page - 1) * completedPagination.limit;
-            const paginatedTasks = allCompletedTasks.slice(offset, offset + completedPagination.limit);
+            // 客户端分页
+            const startIndex = (page - 1) * completedPagination.limit;
+            const endIndex = startIndex + completedPagination.limit;
+            const paginatedTasks = tasks.slice(startIndex, endIndex);
 
             setCompletedTasks(paginatedTasks);
             setCompletedPagination(prev => ({
                 ...prev,
                 currentPage: page,
-                offset: offset,
-                hasMore: allCompletedTasks.length > offset + completedPagination.limit
+                offset: startIndex,
+                hasMore: endIndex < tasks.length
             }));
         } catch (error) {
-            console.error('获取已完成任务失败:', error);
+            console.error('❌ 获取已完成任务失败:', error);
+            console.error('❌ 错误详情:', error.response);
         } finally {
             setLoadingCompleted(false);
         }
