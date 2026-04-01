@@ -297,6 +297,14 @@ const markdownComponents = {
     tr: (props) => <tr className="hover:bg-gray-50" {...props} />,
     th: (props) => <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" {...props} />,
     td: (props) => <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700" {...props} />,
+    think: (props) => (
+        <details className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-500">
+            <summary className="cursor-pointer font-medium text-gray-700 select-none">思考过程</summary>
+            <div className="mt-2 pl-2 border-l-2 border-gray-300">
+                {props.children}
+            </div>
+        </details>
+    ),
 };
 
 // ==============================================================================
