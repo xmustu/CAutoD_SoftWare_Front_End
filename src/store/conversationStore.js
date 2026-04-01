@@ -29,24 +29,29 @@ const useConversationStore = create((set, get) => ({
     }
   },
 
-  addMessage: (message) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        // 为每条消息添加一个唯一的ID，用于React的key
-        { ...message, id: `msg-${Date.now()}-${Math.random()}` },
-      ],
-    })),
-
-  // --- 最终重构：使用函数式 set 保证状态更新的原子性 ---
-  updateLastAiMessage: (update) => {
-    console.log("🔄 Store.updateLastAiMessage 被调用, update:", update);
-
+  addMessage: (message, forTaskId) =>
     set((state) => {
-      const lastMessage = state.messages[state.messages.length - 1];
+      // 💥 任务守卫：如果指定了 forTaskId，且不匹配当前 activeTaskId，则忽略
+      if (forTaskId && state.activeTaskId !== forTaskId) {
+        console.warn(`⚠️ addMessage 已拦截: forTaskId=${forTaskId} ≠ activeTaskId=${state.activeTaskId}`);
+        return state;
+      }
+      return {
+        messages: [
+          ...state.messages,
+          { ...message, id: `msg-${Date.now()}-${Math.random()}` },
+        ],
+      };
+    }),
 
-      console.log("🔄 消息列表长度:", state.messages.length);
-      console.log("🔄 最后一条消息:", lastMessage);
+  updateLastAiMessage: (update, forTaskId) => {
+    set((state) => {
+      // 💥 任务守卫：如果指定了 forTaskId，且不匹配当前 activeTaskId，则忽略
+      if (forTaskId && state.activeTaskId !== forTaskId) {
+        return state;
+      }
+
+      const lastMessage = state.messages[state.messages.length - 1];
 
       if (state.messages.length === 0 || lastMessage.role !== "assistant") {
         console.warn("⚠️ 没有 assistant 消息，跳过更新");
@@ -137,12 +142,15 @@ const useConversationStore = create((set, get) => ({
 
   setActiveTaskId: (taskId) => set({ activeTaskId: taskId }),
 
-  startNewConversation: () =>
+  startNewConversation: () => {
+    // 💥 停止可能正在运行的轮询
+    get().stopPolling();
     set({
       activeConversationId: null,
       activeTaskId: null,
       messages: [],
-    }),
+    });
+  },
 
   ensureConversation: async (title = "新对话") => {
     let activeId = get().activeConversationId;
@@ -240,7 +248,8 @@ const useConversationStore = create((set, get) => ({
     const fetchAndUpdate = async () => {
       try {
         const response = await getTaskHistoryAPI(taskId);
-        const messages = response.message || [];
+        // 兼容新版分页格式(items)和旧版格式(message)
+        const messages = response.items || response.message || [];
 
         set({
           messages: messages,

@@ -594,7 +594,7 @@ const DesignOptimizationPage = () => {
       console.error("Failed to create task:", error);
       updateLastAiMessage({
         finalData: { answer: "抱歉，创建任务时出现错误。", metadata: {} },
-      });
+      }, taskIdToUse);
       setIsTaskRunning(false); // 任务失败，设置为false
       setIsStreaming(false);
       return;
@@ -614,7 +614,7 @@ const DesignOptimizationPage = () => {
       console.error("File upload failed:", error);
       updateLastAiMessage({
         finalData: { answer: "抱歉，文件上传失败。", metadata: {} },
-      });
+      }, taskIdToUse);
       setIsStreaming(false);
       return;
     }
@@ -644,16 +644,16 @@ const DesignOptimizationPage = () => {
             console.log("🔍 提取的文本内容:", textContent);
 
             if (textContent) {
-              updateLastAiMessage({ textChunk: textContent });
+              updateLastAiMessage({ textChunk: textContent }, taskIdToUse);
             } else {
               console.warn("⚠️ text_chunk 没有有效的文本内容");
             }
           },
           image_chunk: (data) => {
-            updateLastAiMessage({ image: data });
+            updateLastAiMessage({ image: data }, taskIdToUse);
           },
           message_end: (data) => {
-            updateLastAiMessage({ finalData: data });
+            updateLastAiMessage({ finalData: data }, taskIdToUse);
             setIsStreaming(false); // 流式传输结束
 
             // // 在消息结束后打印当前图片状态 修改与2025.9.12.18.44
@@ -723,7 +723,7 @@ const DesignOptimizationPage = () => {
               answer: "抱歉，请求出错，请稍后再试。",
               metadata: {},
             },
-          });
+          }, taskIdToUse);
           setIsTaskRunning(false); // 任务失败，设置为false
           setIsStreaming(false);
         },
@@ -741,7 +741,7 @@ const DesignOptimizationPage = () => {
           answer: "抱歉，启动优化任务时出现错误。",
           metadata: {},
         },
-      });
+      }, taskIdToUse);
       setIsTaskRunning(false); // 任务失败，设置为false
       setIsStreaming(false);
     }
