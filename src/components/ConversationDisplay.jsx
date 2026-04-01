@@ -218,9 +218,20 @@ const GeometryProgressTracker = ({ metadata, content, isProcessing }) => {
 
 const useMarkdownProcessor = (content) => {
     return useMemo(() => {
-        if (!content) return '';
+        if (!content) return { processedContent: '', thinkContent: null, isThinking: false };
+
+        let thinkContent = null;
+        let mainContent = content;
+        const isThinking = mainContent.includes('<think>') && !mainContent.includes('</think>');
+        
+        const thinkMatch = mainContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+        if (thinkMatch) {
+            thinkContent = thinkMatch[1].trim();
+            mainContent = mainContent.replace(thinkMatch[0], '').trim();
+        }
+
         const listItemRegex = /^- (\w+)：(.+?)，推荐 (.+)/;
-        const allLines = content.split('\n');
+        const allLines = mainContent.split('\n');
         let tableRows = [];
         let contentBeforeList = [];
         let contentAfterList = [];
@@ -277,12 +288,12 @@ const useMarkdownProcessor = (content) => {
             return [...contentBeforeList, '', finalTable, '', ...contentAfterList].join('\n');
         }
 
-        let cleanedContent = content.split('\n').map(line => line.trimEnd()).join('\n');
+        let cleanedContent = mainContent.split('\n').map(line => line.trimEnd()).join('\n');
         if (cleanedContent.includes('| --- |')) {
             cleanedContent = cleanedContent.replace(/\| --- \|/g, '\n| --- |');
             cleanedContent = `\n${cleanedContent}\n`;
         }
-        return cleanedContent;
+        return { processedContent: cleanedContent, thinkContent, isThinking };
     }, [content]);
 };
 
@@ -297,34 +308,41 @@ const markdownComponents = {
     tr: (props) => <tr className="hover:bg-gray-50" {...props} />,
     th: (props) => <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" {...props} />,
     td: (props) => <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700" {...props} />,
-    think: (props) => (
-        <details className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-500">
-            <summary className="cursor-pointer font-medium text-gray-700 select-none">思考过程</summary>
-            <div className="mt-2 pl-2 border-l-2 border-gray-300">
-                {props.children}
-            </div>
-        </details>
-    ),
 };
 
 // ==============================================================================
 // 4. 业务逻辑子组件
 // ==============================================================================
 
+const ThinkBlock = ({ thinkContent, isThinking }) => {
+    if (!thinkContent) return null;
+    return (
+        <details className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-500" open={isThinking}>
+            <summary className="cursor-pointer font-medium text-gray-700 select-none flex items-center">
+                🧠 模型思考过程 {isThinking && <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />}
+            </summary>
+            <div className="mt-2 pl-2 border-l-2 border-gray-300 whitespace-pre-wrap text-xs">
+                {thinkContent}
+            </div>
+        </details>
+    );
+};
+
 const GeometryMessageView = ({ content, metadata, isProcessing, onDownload, onPostFile, onCopyCode }) => {
-    const processedContent = useMarkdownProcessor(content);
+    const { processedContent, thinkContent, isThinking } = useMarkdownProcessor(content);
     const hasCompletedCodeBlock = content && (content.includes('import cadquery') || content.includes('show_object')) && content.includes('```');
 
     return (
         <div className="geometry-view">
-            {/* 只有在这渲染，说明已经判定为几何视图，所以直接显示进度条 */}
             <GeometryProgressTracker 
                 metadata={metadata} 
                 content={content} 
                 isProcessing={isProcessing}
             />
 
-            {content && content.trim() ? (
+            <ThinkBlock thinkContent={thinkContent} isThinking={isThinking} />
+
+            {processedContent && processedContent.trim() ? (
                 <div className="prose max-w-none break-words my-2">
                     <ReactMarkdown 
                         rehypePlugins={[rehypeRaw]} 
@@ -334,7 +352,7 @@ const GeometryMessageView = ({ content, metadata, isProcessing, onDownload, onPo
                         {processedContent}
                     </ReactMarkdown>
                 </div>
-            ) : isProcessing ? (
+            ) : isProcessing && !thinkContent ? (
                 <div className="flex items-center text-indigo-700 font-medium py-2">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 正在等待建模代码流式响应...
                 </div>
@@ -422,10 +440,11 @@ const OptimizationMessageView = ({ content, imagesToDisplay, onImageClick, getFi
 };
 
 const GeneralMessageView = ({ content, imagesToDisplay, onImageClick, getFileUrl }) => {
-    const processedContent = useMarkdownProcessor(content);
+    const { processedContent, thinkContent, isThinking } = useMarkdownProcessor(content);
 
     return (
         <div className="general-view">
+            <ThinkBlock thinkContent={thinkContent} isThinking={isThinking} />
             <div className="prose max-w-none break-words">
                 <ReactMarkdown 
                     rehypePlugins={[rehypeRaw]} 
