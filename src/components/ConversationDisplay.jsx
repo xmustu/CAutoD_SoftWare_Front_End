@@ -14,6 +14,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import SuggestedQuestions from './SuggestedQuestions';
 import ThreeDViewer from './ThreeDViewer';
 import useConversationStore from '@/store/conversationStore';
+import { inferMessageType, extractUniqueImages, safeParseMetadata } from '@/utils/messageUtils';
 
 // ==============================================================================
 // 1. 基础辅助组件
@@ -335,6 +336,11 @@ const GeometryMessageView = ({ content, metadata, isProcessing, onDownload, onPo
                 <div className="mt-4 border-t pt-2">
                     <h4 className="text-sm font-semibold mb-2">生成文件:</h4>
                     <div className="flex flex-col space-y-2">
+                        {metadata && metadata.cad_file && !metadata.stl_file && (
+                            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200 mb-2">
+                                当前前端仅支持 STL 预览，CAD 文件可下载但不可直接预览。
+                            </div>
+                        )}
                         {metadata && metadata.cad_file && (
                             <div className="flex space-x-2">
                                 <Button variant="outline" size="sm" onClick={() => onDownload(metadata.cad_file)} className="flex-1">
@@ -444,44 +450,8 @@ const GeneralMessageView = ({ content, imagesToDisplay, onImageClick, getFileUrl
     );
 };
 // -----------------------------------------------------------------------------
-// 🛠️ 辅助函数：根据内容推断消息类型 (用于历史记录回显)
+// 🛠️ 辅助函数：消息类型推断现在已移至 /utils/messageUtils.js
 // -----------------------------------------------------------------------------
-const inferMessageType = (msg) => {
-    const content = typeof msg.content === 'string' ? msg.content : '';
-    const metadata = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {});
-    const parts = msg.parts || [];
-
-    // 1. 判断是否为【设计优化】
-    const isOptimization = (
-        // 特征A: 有优化相关的图片
-        parts.some(p => p.type === 'image' && (p.altText === '收敛曲线' || p.altText === '参数分布图' || p.altText === 'screenshot')) ||
-        // 特征B: 包含优化日志关键词
-        content.includes('开始优化') ||
-        content.includes('已收到目标命令') || 
-        content.includes('等待有效参数') ||
-        content.includes('获取到参数') ||
-        content.includes('计算参数范围') ||
-        content.includes('等待sub') || 
-        content.includes('command=') ||
-        content.includes('最优参数') ||
-        content.includes('最优体积') ||
-        content.includes('info：') ||   
-        content.includes('info:')
-    );
-    if (isOptimization) return 'optimize';
-
-    // 2. 判断是否为【几何建模】
-    const isGeometry = (
-        metadata.code_file || metadata.stl_file || metadata.cad_file ||
-        content.includes('import cadquery') || 
-        content.includes('```python') ||
-        content.includes('cadquery as cq') ||
-        content.includes('show_object(')
-    );
-    if (isGeometry) return 'geometry';
-
-    return 'general';
-};
 const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesExtracted }) => {
     const { content: rawContent, parts, metadata: rawMetadata, suggested_questions, task_type } = message;
 
@@ -490,13 +460,7 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
         return typeof rawContent === 'string' ? rawContent.replace(/\\n/g, '\n').replace(/\\"/g, '"') : rawContent;
     }, [rawContent]);
 
-    const metadata = useMemo(() => {
-        if (!rawMetadata) return {};
-        if (typeof rawMetadata === 'string') {
-            try { return JSON.parse(rawMetadata); } catch (e) { return {}; }
-        }
-        return rawMetadata;
-    }, [rawMetadata]);
+    const metadata = useMemo(() => safeParseMetadata(rawMetadata), [rawMetadata]);
 
     const [is3DViewerOpen, setIs3DViewerOpen] = useState(false); 
     const [current3DModelUrl, setCurrent3DModelUrl] = useState(''); 
@@ -582,17 +546,8 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
         setIsImagePreviewOpen(true);
     };
 
-    // ✅ 关键修复：图片数据去重
-    const uniqueImages = useMemo(() => {
-        if (!parts) return [];
-        const seen = new Set();
-        return parts.filter(p => p.type === 'image').filter(img => {
-            const key = img.imageUrl || img.fileName;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
-    }, [parts]);
+    // ✅ 关键修复：图片数据去重已移至 utils
+    const uniqueImages = useMemo(() => extractUniqueImages(parts), [parts]);
     
     // 使用去重后的 uniqueImages
     const imagesJson = JSON.stringify(uniqueImages);

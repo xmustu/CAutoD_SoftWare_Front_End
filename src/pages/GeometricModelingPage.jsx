@@ -357,8 +357,8 @@ const GeometricModelingPage = () => {
             setLastAiContent(lastAiMsg.content);
             setLatestMetadata(lastAiMsg.metadata || {});
 
-            const isComplete = lastAiMsg.metadata?.stl_file && lastAiMsg.metadata?.preview_image && !isStreaming;
-            setIsGeometryTaskStreaming(lastAiMsg.task_type === 'geometry' && !isComplete);
+            const isComplete = (lastAiMsg.metadata?.stl_file || lastAiMsg.metadata?.cad_file) && lastAiMsg.metadata?.preview_image && !isStreaming;
+            setIsGeometryTaskStreaming(lastAiMsg.task_type === 'geometry' && isStreaming);
 
             const stlFile = lastAiMsg.metadata?.stl_file;
             if (stlFile && stlFile !== loadedFileRef.current) {

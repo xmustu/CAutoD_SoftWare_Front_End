@@ -35,6 +35,11 @@ export default defineConfig(({ mode }) => {
     define: {
       "process.env": env,
     },
+    test: {
+      environment: "jsdom",
+      setupFiles: "./src/test/setup.js",
+      globals: true,
+    },
 
     // 新增：让 Vite 接受你的外网域名访问，并监听 IPv4+IPv6
     // server: {
