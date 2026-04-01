@@ -288,11 +288,31 @@ const useMarkdownProcessor = (content) => {
             return [...contentBeforeList, '', finalTable, '', ...contentAfterList].join('\n');
         }
 
-        let cleanedContent = mainContent.split('\n').map(line => line.trimEnd()).join('\n');
-        if (cleanedContent.includes('| --- |')) {
-            cleanedContent = cleanedContent.replace(/\| --- \|/g, '\n| --- |');
-            cleanedContent = `\n${cleanedContent}\n`;
-        }
+        let finalLines = [];
+        let inTable = false;
+        
+        mainContent.split('\n').forEach((line) => {
+            const trimmed = line.trimEnd();
+            const hasPipe = trimmed.includes('|');
+            
+            if (hasPipe) {
+                if (!inTable) {
+                    if (finalLines.length > 0 && finalLines[finalLines.length - 1] !== '') finalLines.push('');
+                    inTable = true;
+                }
+                finalLines.push(trimmed);
+            } else {
+                if (inTable) {
+                    if (trimmed !== '') finalLines.push('', trimmed);
+                    else finalLines.push(trimmed);
+                    inTable = false;
+                } else {
+                    finalLines.push(trimmed);
+                }
+            }
+        });
+
+        let cleanedContent = finalLines.join('\n');
         return { processedContent: cleanedContent, thinkContent, isThinking };
     }, [content]);
 };
