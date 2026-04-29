@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import ChatInput from '@/components/ChatInput.jsx';
+import ProviderSelector from '@/components/ProviderSelector.jsx';
 import { executeTaskAPI } from '@/api/taskAPI';
 import { uploadFileAPI, downloadFileAPI } from '@/api/fileAPI.js';
 import useUserStore from '@/store/userStore';
@@ -243,6 +244,7 @@ const GeometricModelingPage = () => {
     const [inputValue, setInputValue] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
+    const [provider, setProvider] = useState('agent');
     const location = useLocation();
     const [isLoadingFromTaskList, setIsLoadingFromTaskList] = useState(
         () => !!(location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId)
@@ -551,6 +553,7 @@ const GeometricModelingPage = () => {
             conversation_id: conversationId,
             task_id: taskIdToUse,
             task_type: 'geometry',
+            provider: provider,
             files: filesForRequest,
             response_mode: "streaming",
             onMessage: {
@@ -621,6 +624,9 @@ const GeometricModelingPage = () => {
                 <div className="w-full max-w-2xl text-center px-4">
                     <h1 className="text-4xl font-bold mb-8 text-gray-800">您的设计需求是？</h1>
                     <WorkflowGuide />
+                    <div className="flex items-center justify-center mb-3">
+                        <ProviderSelector value={provider} onChange={setProvider} disabled={isStreaming} />
+                    </div>
                     <ChatInput
                         inputValue={inputValue}
                         onInputChange={(e) => setInputValue(e.target.value)}
@@ -714,6 +720,9 @@ const GeometricModelingPage = () => {
                     <ConversationDisplay messages={messages} isLoading={isLoadingMessages} onQuestionClick={handleQuestionClick} onImagesExtracted={() => { }} onShowModel={handleShowModel} />
                 </div>
                 <div className="p-4 border-t bg-white">
+                    <div className="flex items-center mb-2">
+                        <ProviderSelector value={provider} onChange={setProvider} disabled={isStreaming} />
+                    </div>
                     <ChatInput inputValue={inputValue} onInputChange={(e) => setInputValue(e.target.value)} onSendMessage={handleSendMessage} isStreaming={isStreaming} placeholder="输入您的修改意见..." selectedFile={selectedFile} onFileSelect={setSelectedFile} />
                 </div>
             </div>

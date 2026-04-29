@@ -11,6 +11,7 @@ import { Move } from 'lucide-react';
 import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
 import InteractiveFileUpload from '@/components/InteractiveFileUpload.jsx';
+import ProviderSelector from '@/components/ProviderSelector.jsx';
 import QueueStatusBanner from '@/components/QueueStatusBanner.jsx';
 import ProtectedImage from '@/components/ProtectedImage'; // 导入 ProtectedImage 组件
 import OptimizationConfigModal from '@/components/OptimizationConfigModal';
@@ -417,6 +418,7 @@ const DesignOptimizationPage = () => {
   const [currentTaskId, setCurrentTaskId] = useState(null); // <-- 修复 2：添加 currentTaskId**
   // 新增：控制参数配置模态框的状态
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [provider, setProvider] = useState('agent');
   // 💥 新增: 跟踪是否正在从任务列表加载历史对话
   const [isLoadingFromTaskList, setIsLoadingFromTaskList] = useState(false);
 
@@ -626,6 +628,7 @@ const DesignOptimizationPage = () => {
         file_url: fileUrl,
         conversation_id: activeConversationId,
         task_id: taskIdToUse,
+        provider: provider,
       };
 
       executeTaskAPI({
@@ -759,6 +762,11 @@ const DesignOptimizationPage = () => {
           <WorkflowGuide />
           <ConversationSelector />
 
+          {/* Provider 切换 */}
+          <div className="flex items-center justify-center mb-4">
+            <ProviderSelector value={provider} onChange={setProvider} disabled={isStreaming} />
+          </div>
+
           {/* ✅ 使用新版上传组件 */}
           <InteractiveFileUpload
             onFileSelect={setSelectedFile}
@@ -800,6 +808,9 @@ const DesignOptimizationPage = () => {
         {/* 底部保留文件上传条 (仅当参数未提取时，或作为备选操作) */}
         {optimizableParams.length === 0 && !isTaskRunning && (
           <div className="p-4 border-t bg-gray-50">
+            <div className="flex items-center mb-2">
+              <ProviderSelector value={provider} onChange={setProvider} disabled={isStreaming || isTaskRunning} />
+            </div>
             <InteractiveFileUpload
               onFileSelect={setSelectedFile}
               onStart={handleStartOptimization}

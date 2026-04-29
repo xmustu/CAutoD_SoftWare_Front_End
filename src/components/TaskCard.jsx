@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Eye, Trash2, Clock, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { Eye, Trash2, Clock, CheckCircle, XCircle, Loader, Bot, Workflow } from 'lucide-react';
 import { format } from 'date-fns';
 
 /**
@@ -117,7 +117,7 @@ const TaskCard = ({
 
                 {/* 主要内容 */}
                 <div className="flex-1 min-w-0">
-                    {/* 第一行：任务类型 + 状态 */}
+                    {/* 第一行：任务类型 + 状态 + Provider */}
                     <div className="flex items-center gap-2 mb-2">
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             {getTaskTypeLabel(task.task_type)}
@@ -126,6 +126,19 @@ const TaskCard = ({
                             {getStatusIcon(task.status)}
                             {task.status}
                         </span>
+                        {task.provider && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                task.provider === 'dify'
+                                    ? 'bg-violet-100 text-violet-800'
+                                    : 'bg-slate-100 text-slate-700'
+                            }`}>
+                                {task.provider === 'dify'
+                                    ? <Workflow className="h-3 w-3" />
+                                    : <Bot className="h-3 w-3" />
+                                }
+                                {task.provider === 'dify' ? 'Dify' : 'Agent'}
+                            </span>
+                        )}
                     </div>
 
                     {/* 第二行：任务 ID */}

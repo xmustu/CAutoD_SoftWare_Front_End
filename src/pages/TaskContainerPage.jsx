@@ -560,6 +560,10 @@ const TaskContainerPage = () => {
                                     <p className="text-sm text-gray-500">用户 ID</p>
                                     <p className="font-medium">{previewTask.user_id}</p>
                                 </div>
+                                <div>
+                                    <p className="text-sm text-gray-500">执行方式</p>
+                                    <p className="font-medium">{previewTask.provider === 'dify' ? '🔗 Dify 工作流' : '🤖 Agent 智能体'}</p>
+                                </div>
                             </div>
                             <div>
                                 <p className="text-sm text-gray-500 mb-1">会话 ID</p>

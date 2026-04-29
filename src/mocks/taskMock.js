@@ -8,6 +8,7 @@ export const mockTasks = {
       summary: "检索高强度螺栓",
       created_at: "2023-10-27T10:00:00Z",
       status: "完成",
+      provider: "agent",
     },
     {
       task_id: "task-002",
@@ -15,6 +16,7 @@ export const mockTasks = {
       summary: "优化支架结构以减轻重量",
       created_at: "2023-10-27T11:30:00Z",
       status: "进行中",
+      provider: "dify",
     },
   ],
   "conv-456-def": [
@@ -24,6 +26,7 @@ export const mockTasks = {
       summary: "寻找兼容的传感器",
       created_at: "2023-10-26T14:00:00Z",
       status: "完成",
+      provider: "agent",
     },
   ],
   "conv-789-ghi": [], // 这个对话没有任务
@@ -38,6 +41,7 @@ export const addMockTask = (taskData) => {
     summary: `新任务: ${taskData.task_type}`,
     created_at: new Date().toISOString(),
     status: "进行中",
+    provider: taskData.provider || "agent",
     ...taskData.details,
   };
 
@@ -51,7 +55,9 @@ export const addMockTask = (taskData) => {
 
 // 模拟统一接口的响应
 export const getMockResponse = (requestData) => {
-  const { task_type } = requestData;
+  const { task_type, provider } = requestData;
+  const isDify = provider === "dify";
+  const providerPrefix = isDify ? "[Dify 工作流] " : "";
 
   switch (task_type) {
     case "geometry":
@@ -64,15 +70,23 @@ export const getMockResponse = (requestData) => {
             task_id: requestData.task_id,
           },
         },
-        { event: "text_chunk", data: { text: "正在为您生成" } },
-        { event: "text_chunk", data: { text: "一个机械臂..." } },
+        { event: "text_chunk", data: { text: `${providerPrefix}正在为您生成` } },
+        {
+          event: "text_chunk",
+          data: {
+            text: isDify
+              ? "模型（通过 Dify 工作流引擎驱动）..."
+              : "一个机械臂...",
+          },
+        },
         {
           event: "message_end",
           data: {
-            answer: "已为您生成机械臂模型。",
+            answer: `${providerPrefix}已为您生成机械臂模型。`,
             metadata: {
               preview_image:
                 "https://via.placeholder.com/400x300.png?text=Mechanical+Arm",
+              provider: provider || "agent",
             },
           },
         },
@@ -104,6 +118,7 @@ export const getMockResponse = (requestData) => {
         final_stress: 300.2,
         unit: { volume: "cm^3", stress: "MPa" },
         constraint_satisfied: true,
+        provider: provider || "agent",
       });
     default:
       return { error: "Unknown task type" };
