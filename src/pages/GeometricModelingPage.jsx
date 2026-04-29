@@ -20,6 +20,7 @@ import useUserStore from '@/store/userStore';
 import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
 import ThreeDViewer from '@/components/ThreeDViewer';
+import { generatePreviewFromAIResponse } from '@/utils/geometryBuilder';
 const GEOMETRY_BOT_ID = 'ep-m-20251211113938-sr72q';
 
 // ----------------------------------------------------------------------
@@ -256,6 +257,8 @@ const GeometricModelingPage = () => {
     const [lastAiContent, setLastAiContent] = useState("");
     const [lastUserPrompt, setLastUserPrompt] = useState("");
     const [isGeometryTaskStreaming, setIsGeometryTaskStreaming] = useState(false);
+    // 前端预览模型信息（当后端未返回 STL 时由参数表生成）
+    const [frontendPreviewInfo, setFrontendPreviewInfo] = useState(null);
 
     // Ref
     const loadedFileRef = useRef(null);
@@ -346,7 +349,7 @@ const GeometricModelingPage = () => {
         }
     }, []);
 
-    // 监听消息更新 (包含自动显示逻辑)
+    // 监听消息更新 (包含自动显示逻辑 + 前端预览兜底)
     useEffect(() => {
         if (!messages || messages.length === 0) return;
 
@@ -364,8 +367,27 @@ const GeometricModelingPage = () => {
 
             const stlFile = lastAiMsg.metadata?.stl_file;
             if (stlFile && stlFile !== loadedFileRef.current) {
+                // 后端返回了模型文件 → 正常加载
                 console.log("自动加载新生成的模型:", stlFile);
+                setFrontendPreviewInfo(null); // 清除前端预览标记
                 handleShowModel(stlFile);
+            } else if (!stlFile && !isStreaming && lastAiMsg.content && lastAiMsg.content.length > 50) {
+                // 💥 后端未返回模型文件 + 流已结束 + 有内容 → 尝试前端预览
+                const result = generatePreviewFromAIResponse(lastAiMsg.content);
+                if (result && result.blobUrl) {
+                    console.log('🎨 [前端预览] 从参数表生成预览模型:', result.geoType.label);
+                    // 清理旧的前端预览 URL
+                    if (frontendPreviewInfo?.blobUrl) {
+                        URL.revokeObjectURL(frontendPreviewInfo.blobUrl);
+                    }
+                    if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
+                    setCurrentStlUrl(result.blobUrl);
+                    setFrontendPreviewInfo(result);
+                    setModelParts(['Model']);
+                    setPartVisibility({ 'Model': true });
+                    setHighlightState({ name: null, isHighlighted: false });
+                    loadedFileRef.current = '__frontend_preview__';
+                }
             }
         }
     }, [messages, activeTaskId, activeConversationId, isStreaming]);
@@ -482,7 +504,9 @@ const GeometricModelingPage = () => {
         setIsStreaming(false);
         startNewConversation();
         if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
+        if (frontendPreviewInfo?.blobUrl) URL.revokeObjectURL(frontendPreviewInfo.blobUrl);
         setCurrentStlUrl(null);
+        setFrontendPreviewInfo(null);
         setLatestMetadata(null);
         setLastAiContent("");
         setLastUserPrompt("");
@@ -692,6 +716,16 @@ const GeometricModelingPage = () => {
                             <Box className="w-16 h-16 mb-4 opacity-20" />
                             <p className="font-medium text-gray-400">等待加载 3D 模型...</p>
                             <p className="text-xs mt-2 opacity-70">生成完成后将自动展示</p>
+                        </div>
+                    )}
+
+                    {/* 💥 前端预览标识 */}
+                    {frontendPreviewInfo && currentStlUrl && (
+                        <div className="absolute top-3 left-1/2 transform -translate-x-1/2 z-20 bg-gradient-to-r from-amber-500/90 to-orange-500/90 backdrop-blur-md text-white px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-medium border border-white/20">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            <span>前端预览 · {frontendPreviewInfo.geoType?.label || '几何体'}</span>
+                            <span className="opacity-70">|</span>
+                            <span className="opacity-80">{Object.entries(frontendPreviewInfo.params || {}).filter(([k]) => !k.startsWith('offset') && !k.startsWith('center')).map(([k, v]) => `${k}=${v}`).join(', ')}</span>
                         </div>
                     )}
 
