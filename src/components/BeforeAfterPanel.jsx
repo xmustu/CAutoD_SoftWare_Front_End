@@ -1,14 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { Card } from '@/components/ui/card';
 import {
   Box,
   TrendingDown,
   TrendingUp,
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
+  CheckCircle2,
   Info,
+  ChevronRight,
+  X,
+  Clock,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import ProtectedImage from './ProtectedImage';
 import {
   parseOptimizationLog,
@@ -24,6 +32,98 @@ const buildFileUrl = (input, conversationId, taskId) => {
   if (isImage) return `/files/${conversationId}/${taskId}/${input}`;
   return `/api/download_file?task_id=${taskId}&conversation_id=${conversationId}&file_name=${encodeURIComponent(input)}`;
 };
+
+// =====================================================================
+// 1. 顶部 KPI 状态条（始终可见）
+// =====================================================================
+
+const KpiBadge = ({ label, before, after, formatter, lowerIsBetter, threshold }) => {
+  const valid = before != null && after != null && !Number.isNaN(before) && !Number.isNaN(after);
+  if (!valid) return null;
+  const delta = after - before;
+  const improved = lowerIsBetter ? delta < 0 : delta > 0;
+  const violated = threshold != null && after > threshold;
+  const Trend = improved ? TrendingDown : TrendingUp;
+
+  const color = violated
+    ? 'text-amber-600 bg-amber-50 border-amber-200'
+    : improved
+      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+      : 'text-red-600 bg-red-50 border-red-200';
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs border ${color}`}>
+      <span className="text-gray-500">{label}</span>
+      <Trend className="w-3 h-3" />
+      <span className="font-mono font-semibold">{formatPercent(before, after)}</span>
+      {violated && <AlertTriangle className="w-3 h-3" title="超过许用应力" />}
+    </span>
+  );
+};
+
+const KpiBar = ({ analysis, onOpen }) => {
+  const completed = analysis.isComplete;
+  const hasMetrics = !!(analysis.initial && analysis.best);
+
+  if (!hasMetrics) return null;
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2 bg-gradient-to-r from-emerald-50 via-white to-white border-y border-emerald-100">
+      <div className="flex items-center gap-3 min-w-0 flex-wrap">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 shrink-0">
+          {completed ? (
+            <CheckCircle2 className="w-4 h-4" />
+          ) : (
+            <TrendingDown className="w-4 h-4" />
+          )}
+          {completed ? '优化完成' : '优化中'}
+        </span>
+
+        <KpiBadge
+          label="体积"
+          before={analysis.initial?.volume}
+          after={analysis.best?.volume}
+          formatter={formatVolume}
+          lowerIsBetter
+        />
+        <KpiBadge
+          label="应力"
+          before={analysis.initial?.stress}
+          after={analysis.best?.stress}
+          formatter={formatStress}
+          lowerIsBetter
+          threshold={analysis.settings?.permissibleStress}
+        />
+
+        {analysis.duration != null && (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+            <Clock className="w-3 h-3" />
+            {analysis.duration.toFixed(1)}s
+          </span>
+        )}
+
+        {analysis.history.length > 0 && (
+          <span className="text-xs text-gray-400 shrink-0">
+            {analysis.history.length} 代 · {analysis.simulations.length} 次仿真
+          </span>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-white border border-emerald-200 rounded-full hover:bg-emerald-50 hover:border-emerald-400 transition-colors shrink-0"
+      >
+        查看详情
+        <ChevronRight className="w-3 h-3" />
+      </button>
+    </div>
+  );
+};
+
+// =====================================================================
+// 2. 详情 Drawer 内部组件
+// =====================================================================
 
 const MetricCard = ({ label, before, after, formatter, lowerIsBetter, threshold }) => {
   const valid = before != null && after != null && !Number.isNaN(before) && !Number.isNaN(after);
@@ -41,7 +141,7 @@ const MetricCard = ({ label, before, after, formatter, lowerIsBetter, threshold 
         <span className="text-gray-300">→</span>
         <span className={`text-base font-mono font-bold ${trendColor}`}>{formatter(after)}</span>
       </div>
-      <div className="flex items-center gap-2 mt-1.5">
+      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
         {valid && (
           <span className={`inline-flex items-center text-xs ${trendColor}`}>
             <Trend className="w-3 h-3 mr-0.5" />
@@ -49,7 +149,7 @@ const MetricCard = ({ label, before, after, formatter, lowerIsBetter, threshold 
           </span>
         )}
         {violated && (
-          <span className="inline-flex items-center text-xs text-amber-600" title="超过许用应力">
+          <span className="inline-flex items-center text-xs text-amber-600">
             <AlertTriangle className="w-3 h-3 mr-0.5" />
             超限
           </span>
@@ -90,18 +190,108 @@ const ModelSlot = ({ label, badge, imageSrc, placeholder, dimmed }) => (
   </div>
 );
 
-/**
- * 设计优化"前后对比"面板（MVP）
- *
- * 数据来源：
- *   - 数值：从 message.content（流式日志文本）正则解析（参考 utils/optimizationLogParser）
- *   - 截图：从 message.parts 里 altText === 'screenshot' 的图片，按时间顺序首/末两张占位
- *   - 3D 模型槽：占位，等后端补 metadata.initial_stl_file / stl_file 字段
- *
- * 若无任何可解析数据 → 返回 null，不渲染
- */
+const DetailContent = ({ analysis, beforeImg, afterImg }) => (
+  <div className="space-y-4">
+    {/* 双 ModelSlot（3D 视图壳子） */}
+    <div className="flex items-stretch gap-3">
+      <ModelSlot
+        label="优化前 (Before)"
+        badge="初始"
+        imageSrc={beforeImg}
+        placeholder="待上传模型预览"
+        dimmed
+      />
+      <div className="self-center text-xl text-gray-300 select-none px-1">⇄</div>
+      <ModelSlot
+        label="优化后 (After)"
+        badge={analysis.best?.generation ? `gen ${analysis.best.generation}` : 'best'}
+        imageSrc={afterImg || beforeImg}
+        placeholder="待生成预览"
+      />
+    </div>
+
+    {/* 数值对比卡 */}
+    {analysis.initial && analysis.best && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <MetricCard
+          label="结构体积"
+          before={analysis.initial.volume}
+          after={analysis.best.volume}
+          formatter={formatVolume}
+          lowerIsBetter
+        />
+        <MetricCard
+          label="最大应力"
+          before={analysis.initial.stress}
+          after={analysis.best.stress}
+          formatter={formatStress}
+          lowerIsBetter
+          threshold={analysis.settings?.permissibleStress}
+        />
+      </div>
+    )}
+
+    {/* 最优参数表（若解析到） */}
+    {analysis.finalResult?.params && analysis.finalResult.params.length > 0 && (
+      <div className="bg-white border border-gray-200 rounded-lg p-3">
+        <div className="text-xs text-gray-500 mb-2 font-medium">最优参数</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          {analysis.finalResult.params.map((p) => (
+            <div key={p.name} className="flex justify-between border-b border-gray-100 py-0.5">
+              <span className="text-gray-600 font-mono truncate" title={p.name}>{p.name}</span>
+              <span className="font-mono text-gray-800">{p.value.toFixed(6)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* 算法配置 */}
+    {analysis.settings?.method && (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 px-1">
+        <span>算法 <b className="text-gray-700">{analysis.settings.method}</b></span>
+        {analysis.settings.generations != null && (
+          <span>代数 <b className="text-gray-700">{analysis.settings.generations}</b></span>
+        )}
+        {analysis.settings.population != null && (
+          <span>种群 <b className="text-gray-700">{analysis.settings.population}</b></span>
+        )}
+        {analysis.settings.permissibleStress != null && (
+          <span>许用应力 <b className="text-gray-700">{formatStress(analysis.settings.permissibleStress)}</b></span>
+        )}
+        {analysis.constraintSatisfied === true && (
+          <span className="inline-flex items-center gap-0.5 text-emerald-600">
+            <CheckCircle2 className="w-3 h-3" /> 符合约束
+          </span>
+        )}
+        {analysis.constraintSatisfied === false && (
+          <span className="inline-flex items-center gap-0.5 text-amber-600">
+            <AlertTriangle className="w-3 h-3" /> 不符合约束
+          </span>
+        )}
+      </div>
+    )}
+
+    {/* 待后端字段提示 */}
+    <div className="flex items-start gap-1.5 text-[10px] text-gray-400 leading-relaxed px-1 pt-2 border-t border-gray-100">
+      <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+      <span>
+        3D 双视图模型对比预留位置，待后端在 message_end 的 metadata 中提供
+        <code className="px-1 mx-0.5 bg-gray-100 rounded text-gray-600">initial_stl_file</code>
+        与
+        <code className="px-1 mx-0.5 bg-gray-100 rounded text-gray-600">stl_file</code>
+        字段后启用真实 STL 渲染。
+      </span>
+    </div>
+  </div>
+);
+
+// =====================================================================
+// 3. 主组件：顶部 KPI 条 + 详情 Dialog
+// =====================================================================
+
 const BeforeAfterPanel = ({ message, conversationId, taskId }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const analysis = useMemo(
     () => parseOptimizationLog(message?.content),
@@ -128,99 +318,26 @@ const BeforeAfterPanel = ({ message, conversationId, taskId }) => {
     : '';
 
   return (
-    <Card className="border-gray-200 shadow-sm bg-white">
-      <button
-        type="button"
-        onClick={() => setCollapsed((c) => !c)}
-        className="w-full flex items-center justify-between px-4 py-2 border-b bg-gradient-to-r from-emerald-50 to-white hover:bg-emerald-50/70 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <TrendingDown className="w-4 h-4 text-emerald-600" />
-          <span className="text-sm font-semibold text-gray-700">优化前后对比</span>
-          {analysis.history.length > 0 && (
-            <span className="text-[11px] text-gray-500">
-              已迭代 {analysis.history.length} 代 · {analysis.simulations.length} 次仿真
-            </span>
-          )}
-        </div>
-        {collapsed ? (
-          <ChevronDown className="w-4 h-4 text-gray-500" />
-        ) : (
-          <ChevronUp className="w-4 h-4 text-gray-500" />
-        )}
-      </button>
+    <>
+      <KpiBar analysis={analysis} onOpen={() => setOpen(true)} />
 
-      {!collapsed && (
-        <div className="p-4 space-y-4">
-          {/* 3D 模型槽（壳子：当前用截图占位，预留双 viewer 位置） */}
-          <div className="flex items-stretch gap-3">
-            <ModelSlot
-              label="优化前 (Before)"
-              badge="初始"
-              imageSrc={beforeImg}
-              placeholder="待上传模型预览"
-              dimmed
-            />
-            <div className="self-center text-xl text-gray-300 select-none px-1">⇄</div>
-            <ModelSlot
-              label="优化后 (After)"
-              badge={analysis.best?.generation ? `gen ${analysis.best.generation}` : 'best'}
-              imageSrc={afterImg || beforeImg}
-              placeholder="待生成预览"
-            />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="px-5 py-3 border-b bg-gradient-to-r from-emerald-50 to-white">
+            <DialogTitle className="flex items-center gap-2 text-emerald-700">
+              <TrendingDown className="w-4 h-4" />
+              优化前后对比
+            </DialogTitle>
+            <DialogDescription className="text-xs text-gray-500">
+              查看体积/应力变化、最优参数与算法配置。3D 双视图待后端 STL 字段接入。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-5">
+            <DetailContent analysis={analysis} beforeImg={beforeImg} afterImg={afterImg} />
           </div>
-
-          {/* 数值对比卡 */}
-          {hasMetrics && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <MetricCard
-                label="结构体积"
-                before={analysis.initial?.volume}
-                after={analysis.best?.volume}
-                formatter={formatVolume}
-                lowerIsBetter
-              />
-              <MetricCard
-                label="最大应力"
-                before={analysis.initial?.stress}
-                after={analysis.best?.stress}
-                formatter={formatStress}
-                lowerIsBetter
-                threshold={analysis.settings?.permissibleStress}
-              />
-            </div>
-          )}
-
-          {/* 算法配置一览 */}
-          {analysis.settings?.method && (
-            <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 px-1">
-              <span>算法 <b className="text-gray-700">{analysis.settings.method}</b></span>
-              {analysis.settings.generations != null && (
-                <span>代数 <b className="text-gray-700">{analysis.settings.generations}</b></span>
-              )}
-              {analysis.settings.population != null && (
-                <span>种群 <b className="text-gray-700">{analysis.settings.population}</b></span>
-              )}
-              {analysis.settings.permissibleStress != null && (
-                <span>许用应力 <b className="text-gray-700">{formatStress(analysis.settings.permissibleStress)}</b></span>
-              )}
-            </div>
-          )}
-
-          {/* 待后端补字段提示 */}
-          <div className="flex items-start gap-1.5 text-[10px] text-gray-400 leading-relaxed px-1">
-            <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
-            <span>
-              当前为 MVP 视图：3D 双视图模型对比预留位置，待后端在 message_end 的 metadata 中提供
-              <code className="px-1 mx-0.5 bg-gray-100 rounded text-gray-600">initial_stl_file</code>
-              与
-              <code className="px-1 mx-0.5 bg-gray-100 rounded text-gray-600">stl_file</code>
-              字段后启用真实 STL 渲染。
-            </span>
-          </div>
-        </div>
-      )}
-    </Card>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

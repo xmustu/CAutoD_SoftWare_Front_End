@@ -781,6 +781,21 @@ const DesignOptimizationPage = () => {
         {optimizableParams.length > 0 && (
           <FloatingConfigButton onClick={() => setIsConfigModalOpen(true)} />
         )}
+
+        {/* 优化前后对比 — 顶部 KPI 条，始终可见；点击「查看详情」从 Dialog 弹出完整对比
+            数据来源：最近一条 assistant 消息的日志文本与 screenshot parts */}
+        {(() => {
+          const lastAi = [...messages].reverse().find((msg) => msg.role === 'assistant');
+          if (!lastAi) return null;
+          return (
+            <BeforeAfterPanel
+              message={lastAi}
+              conversationId={activeConversationId}
+              taskId={activeTaskId}
+            />
+          );
+        })()}
+
         <div className="flex-grow overflow-hidden">
           <ConversationDisplay
             messages={messages}
@@ -790,22 +805,6 @@ const DesignOptimizationPage = () => {
             filterTaskType="optimize"
           />
         </div>
-
-        {/* MVP：屏幕下方的优化前后对比面板（数值真实 + 3D 双视图壳子）
-            数据来源为最近一条 assistant 消息的日志文本与 screenshot parts */}
-        {(() => {
-          const lastAi = [...messages].reverse().find((msg) => msg.role === 'assistant');
-          if (!lastAi) return null;
-          return (
-            <div className="flex-shrink-0 border-t bg-gray-50 p-3 max-h-[42vh] overflow-y-auto">
-              <BeforeAfterPanel
-                message={lastAi}
-                conversationId={activeConversationId}
-                taskId={activeTaskId}
-              />
-            </div>
-          );
-        })()}
 
         {/* 底部保留文件上传条 (仅当参数未提取时，或作为备选操作) */}
         {optimizableParams.length === 0 && !isTaskRunning && (
