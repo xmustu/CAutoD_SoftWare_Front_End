@@ -7,7 +7,7 @@ import {
   CheckCircle2,
   Info,
   ChevronRight,
-  X,
+  Eye,
   Clock,
 } from 'lucide-react';
 import {
@@ -112,10 +112,11 @@ const KpiBar = ({ analysis, onOpen }) => {
       <button
         type="button"
         onClick={onOpen}
-        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-white border border-emerald-200 rounded-full hover:bg-emerald-50 hover:border-emerald-400 transition-colors shrink-0"
+        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full shadow hover:shadow-lg hover:from-emerald-600 hover:to-emerald-700 hover:scale-[1.03] active:scale-[0.98] transition-all shrink-0 ring-1 ring-emerald-400/30"
       >
+        <Eye className="w-4 h-4" />
         查看详情
-        <ChevronRight className="w-3 h-3" />
+        <ChevronRight className="w-4 h-4" />
       </button>
     </div>
   );
@@ -161,7 +162,7 @@ const MetricCard = ({ label, before, after, formatter, lowerIsBetter, threshold 
 
 const ModelSlot = ({ label, badge, imageSrc, placeholder, dimmed }) => (
   <div className="flex-1 min-w-0 flex flex-col">
-    <div className="text-xs text-gray-600 mb-1 flex items-center gap-2">
+    <div className="text-xs text-gray-600 mb-1.5 flex items-center gap-2">
       <span className="font-medium">{label}</span>
       {badge && (
         <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-600">
@@ -170,20 +171,39 @@ const ModelSlot = ({ label, badge, imageSrc, placeholder, dimmed }) => (
       )}
     </div>
     <div
-      className={`aspect-video bg-gradient-to-b from-gray-50 to-gray-100 border border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden ${
-        dimmed ? 'opacity-70' : ''
+      className={`relative aspect-video bg-gradient-to-br from-slate-800 via-slate-900 to-black rounded-lg overflow-hidden ring-1 ring-slate-700/50 ${
+        dimmed ? 'opacity-90' : ''
       }`}
     >
       {imageSrc ? (
-        <ProtectedImage
-          src={imageSrc}
-          alt={label}
-          className="max-w-full max-h-full object-contain"
-        />
+        <>
+          <ProtectedImage
+            src={imageSrc}
+            alt={label}
+            className="absolute inset-0 w-full h-full object-contain bg-white/95"
+          />
+          {/* 标记：截屏，非真 3D */}
+          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/55 backdrop-blur-sm text-white text-[10px] font-medium">
+            截屏
+          </span>
+        </>
       ) : (
-        <div className="flex flex-col items-center text-gray-400">
-          <Box className="w-10 h-10 opacity-30" />
-          <span className="text-[11px] mt-2">{placeholder || '等待数据'}</span>
+        // 3D 视图待接入占位 — 用工业感配色而非"加载失败"灰
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
+          {/* 装饰性网格背景 */}
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(148,163,184,0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.18) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+            }}
+          />
+          <Box className="w-12 h-12 text-emerald-400/40 mb-2 relative z-10" strokeWidth={1.2} />
+          <span className="text-xs text-slate-300 font-medium relative z-10">3D 视图待接入</span>
+          <span className="text-[10px] text-slate-500 mt-0.5 relative z-10">
+            {placeholder || '等待 STL 字段'}
+          </span>
         </div>
       )}
     </div>
@@ -298,9 +318,15 @@ const BeforeAfterPanel = ({ message, conversationId, taskId }) => {
     [message?.content]
   );
 
+  // 截屏图源优先级:
+  // 1. altText === 'screenshot' (主路径)
+  // 2. 兜底: 任何非"收敛曲线"/"参数分布图"的 image part (覆盖 alt 命名不一致的旧任务)
   const screenshots = useMemo(() => {
     if (!message?.parts) return [];
-    return message.parts.filter((p) => p.type === 'image' && p.altText === 'screenshot');
+    const all = message.parts.filter((p) => p.type === 'image');
+    const named = all.filter((p) => p.altText === 'screenshot');
+    if (named.length > 0) return named;
+    return all.filter((p) => p.altText !== '收敛曲线' && p.altText !== '参数分布图');
   }, [message?.parts]);
 
   const hasMetrics = !!(analysis.initial && analysis.best);
