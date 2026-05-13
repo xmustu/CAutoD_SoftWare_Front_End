@@ -12,6 +12,8 @@ import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
 import InteractiveFileUpload from '@/components/InteractiveFileUpload.jsx';
 import ProviderSelector from '@/components/ProviderSelector.jsx';
+import RecommendedNumberInput from '@/components/RecommendedNumberInput.jsx';
+import BeforeAfterPanel from '@/components/BeforeAfterPanel.jsx';
 import QueueStatusBanner from '@/components/QueueStatusBanner.jsx';
 import ProtectedImage from '@/components/ProtectedImage'; // 导入 ProtectedImage 组件
 import OptimizationConfigModal from '@/components/OptimizationConfigModal';
@@ -83,8 +85,8 @@ const WorkflowGuide = ({ queueLength, runningTasks }) => {
 const fixedParamsDefinitions = [
   { name: 'permissible_stress', initialValue: 355000000, isStress: true, label: '最大应力(mN)' },
   { name: 'method', initialValue: 'GA', isSelect: true, options: ['GA', 'HA'], label: '优化方法' },
-  { name: 'generations', initialValue: 6, isSelect: true, options: [...Array.from({ length: 10 }, (_, i) => i + 1), 20, 30, 50], label: '代数' },
-  { name: 'population_size', initialValue: 7, isSelect: true, options: [...Array.from({ length: 10 }, (_, i) => i + 1), 20, 30, 50], label: '种群数量' },
+  { name: 'generations', initialValue: 6, isRecommendedNumeric: true, min: 1, max: 200, label: '代数' },
+  { name: 'population_size', initialValue: 7, isRecommendedNumeric: true, min: 2, max: 200, label: '种群数量' },
 ];
 
 const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted, displayedImages }) => {
@@ -104,6 +106,8 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
   // 状态，用于保存用户的输入和范围
   const [ranges, setRanges] = useState({});
   const [fixedValues, setFixedValues] = useState({});
+  // 推荐值（只展示，不强制写入）
+  const [recommendations, setRecommendations] = useState({ generations: 6, population_size: 7 });
   // 1️⃣ 【新增】使用 ref 来跟踪用户是否手动修改了特定参数（避免重渲染）
   const manualOverridesRef = React.useRef({});
   // --- 修复点 1：控制 fixedValues, extendedParams, checkedParams 的初始化 ---
@@ -188,6 +192,12 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
       recommendedGenerations = 50;
     }
 
+    // 同步推荐值到 state（供 UI 徽章展示）
+    setRecommendations(prev => {
+      if (prev.generations === recommendedGenerations && prev.population_size === recommendedPopulationSize) return prev;
+      return { generations: recommendedGenerations, population_size: recommendedPopulationSize };
+    });
+
     setFixedValues(prev => {
       // 检查用户是否手动修改过
       const isPopModified = manualOverridesRef.current['population_size'];
@@ -234,15 +244,9 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
     extendedParams.forEach(param => {
       if (checkedParams[param.name]) {
         if (param.isSelect) {
-          const value = fixedValues[param.name];
-          submissionParams[param.name] = {
-            value: value,
-          };
-        } else if (param.isStress) {
-          const value = parseFloat(fixedValues[param.name]);
-          submissionParams[param.name] = {
-            value: value,
-          };
+          submissionParams[param.name] = { value: fixedValues[param.name] };
+        } else if (param.isStress || param.isRecommendedNumeric) {
+          submissionParams[param.name] = { value: parseFloat(fixedValues[param.name]) };
         } else {
           submissionParams[param.name] = {
             min: parseFloat(ranges[param.name]?.min),
@@ -302,13 +306,28 @@ const ParameterForm = ({ params, onSubmit, isTaskRunning, isSecondRoundCompleted
                 id={`check-${param.name}`}
                 checked={!!checkedParams[param.name]}
                 onCheckedChange={() => handleCheckboxChange(param.name)}
-                disabled={isInputDisabled || param.isStress || param.isSelect}
+                disabled={isInputDisabled || param.isStress || param.isSelect || param.isRecommendedNumeric}
               />
               <label htmlFor={`check-${param.name}`} className="font-medium" title={param.name}>
                 {param.label || param.name}
                 {param.label && <span className="text-gray-500 text-sm ml-2">({param.name})</span>}
               </label>
-              {param.isSelect ? (
+              {param.isRecommendedNumeric ? (
+                <div className="col-span-2">
+                  <RecommendedNumberInput
+                    value={fixedValues[param.name] ?? ''}
+                    onChange={(v) => {
+                      manualOverridesRef.current[param.name] = true;
+                      setFixedValues(prev => ({ ...prev, [param.name]: v }));
+                    }}
+                    recommended={recommendations[param.name]}
+                    reason={`已勾选 ${extendedParams.filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name) && checkedParams[p.name]).length} 个优化变量，根据规模推荐`}
+                    min={param.min}
+                    max={param.max}
+                    disabled={isInputDisabled}
+                  />
+                </div>
+              ) : param.isSelect ? (
                 <Select
                   value={fixedValues[param.name]}
                   // 3️⃣ 【修改】onValueChange：记录用户的手动操作
@@ -636,20 +655,11 @@ const DesignOptimizationPage = () => {
         response_mode: "streaming",
         onMessage: {
           text_chunk: (data) => {
-            // 💥 检查点：打印完整的 data 对象
-            console.log("🔍 SSE text_chunk 回调被触发");
-            console.log("🔍 完整 data 对象:", data);
-            console.log("🔍 data.text 值:", data.text);
-            console.log("🔍 typeof data:", typeof data);
-
-            // 尝试提取文本内容
             const textContent = data.text || data;
-            console.log("🔍 提取的文本内容:", textContent);
-
             if (textContent) {
               updateLastAiMessage({ textChunk: textContent }, taskIdToUse);
-            } else {
-              console.warn("⚠️ text_chunk 没有有效的文本内容");
+            } else if (import.meta.env.DEV) {
+              console.warn("⚠️ text_chunk 没有有效的文本内容", data);
             }
           },
           image_chunk: (data) => {
@@ -668,53 +678,29 @@ const DesignOptimizationPage = () => {
             // }
             // 在消息结束时提取参数
             if (data.answer && data.metadata && data.metadata.cad_file === "model.step" && data.metadata.code_file === "script.py") {
-              console.log("DesignOptimizationPage: message_end received. Full answer content (raw):", JSON.stringify(data.answer)); // 打印完整答案内容（原始字符串）
-              console.log("DesignOptimizationPage: message_end received. Full answer content (parsed):", data.answer); // 打印完整答案内容（已解析）
-
-              // 硬编码测试字符串，用于验证正则表达式
-              const testString = "获取参数0：Bottom_main_tube_thick = 0.015\n获取参数1: Uper_main_tube_thick = 0.015";
-              const testRegex = /获取参数\d+[:：] (.+?) = (.+)/g;
-              let testMatch;
-              testRegex.lastIndex = 0;
-              while ((testMatch = testRegex.exec(testString)) !== null) {
-                console.log("DesignOptimizationPage: Test regex match:", testMatch);
-              }
-
               // 清理 data.answer，移除可能存在的不可见字符
               const cleanedAnswer = data.answer.replace(/[^\x00-\x7F\u4e00-\u9fa5\n\r\t\s\w\d\.\-\+\=\:\：]/g, ''); // 保留ASCII字符、中文、换行符、制表符、空格、单词字符、数字、点、连字符、加号、等号、冒号
-              console.log("DesignOptimizationPage: Cleaned answer content (raw):", JSON.stringify(cleanedAnswer));
-              console.log("DesignOptimizationPage: Cleaned answer content (parsed):", cleanedAnswer);
-              // 打印 cleanedAnswer 中每个字符的 Unicode 编码
-              console.log("DesignOptimizationPage: Cleaned answer char codes:");
-              for (let i = 0; i < cleanedAnswer.length; i++) {
-                console.log(`Char: '${cleanedAnswer[i]}', Code: ${cleanedAnswer.charCodeAt(i)}`);
-              }
-
               const extractedParams = [];
               const paramRegex = /获取参数\d+[:：]\s*(.+?)：\[\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/g;
               let match;
               paramRegex.lastIndex = 0;
               while ((match = paramRegex.exec(cleanedAnswer)) !== null) {
-                console.log("DesignOptimizationPage: Param regex match (from cleanedAnswer):", match);
                 const paramName = match[1].trim();
                 const minValue = parseFloat(match[2].trim());
                 const maxValue = parseFloat(match[3].trim());
                 if (!isNaN(minValue) && !isNaN(maxValue)) {
                   extractedParams.push({
                     name: paramName,
-                    initialValue: (minValue + maxValue) / 2, // 可以设置一个中间值作为初始值
+                    initialValue: (minValue + maxValue) / 2,
                     min: minValue,
                     max: maxValue
                   });
-                } else {
-                  console.warn(`DesignOptimizationPage: Could not parse min/max values for param: ${paramName}, min: ${match[2]}, max: ${match[3]}`);
+                } else if (import.meta.env.DEV) {
+                  console.warn(`参数解析失败: ${paramName}, min=${match[2]}, max=${match[3]}`);
                 }
               }
-              console.log("DesignOptimizationPage: Extracted parameters at message_end:", extractedParams);
               if (extractedParams.length > 0) {
                 handleParametersExtracted(extractedParams);
-              } else {
-                console.log("DesignOptimizationPage: No optimizable parameters found in final answer content.");
               }
             }
           },
@@ -804,6 +790,22 @@ const DesignOptimizationPage = () => {
             filterTaskType="optimize"
           />
         </div>
+
+        {/* MVP：屏幕下方的优化前后对比面板（数值真实 + 3D 双视图壳子）
+            数据来源为最近一条 assistant 消息的日志文本与 screenshot parts */}
+        {(() => {
+          const lastAi = [...messages].reverse().find((msg) => msg.role === 'assistant');
+          if (!lastAi) return null;
+          return (
+            <div className="flex-shrink-0 border-t bg-gray-50 p-3 max-h-[42vh] overflow-y-auto">
+              <BeforeAfterPanel
+                message={lastAi}
+                conversationId={activeConversationId}
+                taskId={activeTaskId}
+              />
+            </div>
+          );
+        })()}
 
         {/* 底部保留文件上传条 (仅当参数未提取时，或作为备选操作) */}
         {optimizableParams.length === 0 && !isTaskRunning && (

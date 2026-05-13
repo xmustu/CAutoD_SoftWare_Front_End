@@ -2,7 +2,7 @@ import axios from "axios";
 
 // 创建axios实例
 const instance = axios.create({
-  baseURL: process.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL,
   timeout: 60000, // 请求超时时间
 });
 
@@ -71,7 +71,7 @@ export const sse = (
 
   const start = async () => {
     try {
-      const response = await fetch(`${process.env.VITE_API_URL}${url}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}${url}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -129,21 +129,17 @@ const processText = (text) => {
           if (isCompleteMessage && eventName && onMessage && onMessage[eventName]) {
             try {
               const parsedData = JSON.parse(data);
-              
-              // 💥 添加详细日志
-              console.log("📡 SSE 解析成功:");
-              console.log("  - eventName:", eventName);
-              console.log("  - parsedData:", parsedData);
-              
+
               // 智能提取逻辑保持不变
               const eventPayload =
                 parsedData[eventName] !== undefined
                   ? parsedData[eventName]
                   : parsedData;
-              
-              console.log("  - eventPayload:", eventPayload);
-              console.log("  - 调用回调: onMessage[" + eventName + "]");
-              
+
+              if (import.meta.env.DEV) {
+                console.log("📡 SSE", eventName, eventPayload);
+              }
+
               onMessage[eventName](eventPayload);
             } catch (e) {
               console.error(

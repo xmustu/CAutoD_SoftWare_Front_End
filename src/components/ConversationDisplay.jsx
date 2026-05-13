@@ -529,21 +529,13 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
             if (!store) return '';
             const { activeConversationId, activeTaskId } = store;
 
-            let apiBase = 'http://localhost:8080'; 
-            if (import.meta.env.PROD) {
-                apiBase = import.meta.env.VITE_API_URL || '';
-            } else if (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('/api')) {
-                apiBase = import.meta.env.VITE_API_URL;
-            }
-            apiBase = apiBase.replace(/\/+$/, '');
-
-            if (input.startsWith('/files/')) return `${apiBase}${input}`;
+            // 统一走相对路径：DEV 由 vite proxy 转发，PROD 由 Nginx 反代
+            if (input.startsWith('/files/')) return input;
 
             const isImage = /\.(png|jpg|jpeg|gif)$/i.test(input);
-            if (isImage) return `${apiBase}/files/${activeConversationId}/${activeTaskId}/${input}`;
-            
-            const query = `/api/download_file?task_id=${activeTaskId}&conversation_id=${activeConversationId}&file_name=${encodeURIComponent(input)}`;
-            return `${apiBase}${query}`;
+            if (isImage) return `/files/${activeConversationId}/${activeTaskId}/${input}`;
+
+            return `/api/download_file?task_id=${activeTaskId}&conversation_id=${activeConversationId}&file_name=${encodeURIComponent(input)}`;
         } catch (error) {
             console.error("getFileUrl error:", error);
             return '';

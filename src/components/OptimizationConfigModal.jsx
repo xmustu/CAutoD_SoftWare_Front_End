@@ -17,15 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings2, X, Play, Move, ZoomIn, Loader2 } from 'lucide-react'; 
+import { Settings2, X, Play, Move, ZoomIn, Loader2 } from 'lucide-react';
 import ProtectedImage from '@/components/ProtectedImage';
+import RecommendedNumberInput from '@/components/RecommendedNumberInput';
 
 // 定义固定参数配置
+// isRecommendedNumeric: 数值型，允许手动输入并显示推荐值徽章
 const fixedParamsDefinitions = [
   { name: 'permissible_stress', initialValue: 355000000, isStress: true, label: '最大应力(mN)' },
   { name: 'method', initialValue: 'GA', isSelect: true, options: ['GA', 'HA'], label: '优化方法' },
-  { name: 'generations', initialValue: 6, isSelect: true, options: [...Array.from({ length: 10 }, (_, i) => i + 1), 20, 30, 50], label: '代数' },
-  { name: 'population_size', initialValue: 7, isSelect: true, options: [...Array.from({ length: 10 }, (_, i) => i + 1), 20, 30, 50], label: '种群数量' },
+  { name: 'generations', initialValue: 6, isRecommendedNumeric: true, min: 1, max: 200, label: '代数' },
+  { name: 'population_size', initialValue: 7, isRecommendedNumeric: true, min: 2, max: 200, label: '种群数量' },
 ];
 
 const OptimizationConfigModal = ({ 
@@ -41,7 +43,9 @@ const OptimizationConfigModal = ({
   const [checkedParams, setCheckedParams] = useState({});
   const [ranges, setRanges] = useState({});
   const [fixedValues, setFixedValues] = useState({});
-  
+  // 推荐值（只展示，不强制写入）：{ generations, population_size }
+  const [recommendations, setRecommendations] = useState({ generations: 6, population_size: 7 });
+
   // 💥 是否已初始化的标记 (快照锁定)
   const [hasInitialized, setHasInitialized] = useState(false);
   
@@ -133,22 +137,29 @@ const OptimizationConfigModal = ({
       recommendedGenerations = 50;
     }
 
+    // 将推荐值同步到 state，供 UI 徽章展示
+    setRecommendations(prev => {
+      if (prev.generations === recommendedGenerations && prev.population_size === recommendedPopulationSize) return prev;
+      return { generations: recommendedGenerations, population_size: recommendedPopulationSize };
+    });
+
+    // 未被用户手动修改的字段，自动跟随推荐值
     setFixedValues(prev => {
         const isPopModified = manualOverridesRef.current['population_size'];
         const isGenModified = manualOverridesRef.current['generations'];
-        
+
         const newPopulationSize = isPopModified ? prev.population_size : String(recommendedPopulationSize);
         const newGenerations = isGenModified ? prev.generations : String(recommendedGenerations);
 
         if (prev.generations === newGenerations && prev.population_size === newPopulationSize) return prev;
 
-        return { 
-            ...prev, 
-            population_size: newPopulationSize, 
-            generations: newGenerations 
+        return {
+            ...prev,
+            population_size: newPopulationSize,
+            generations: newGenerations
         };
     });
-  }, [checkedParams]); 
+  }, [checkedParams]);
 
   // --- 拖拽处理逻辑 ---
   const handleDragStart = (e) => {
@@ -198,8 +209,12 @@ const OptimizationConfigModal = ({
       const submissionParams = {};
       extendedParams.forEach(param => {
         if (checkedParams[param.name]) {
-          if (param.isSelect || param.isStress) {
-            submissionParams[param.name] = { value: param.isStress ? parseFloat(fixedValues[param.name]) : fixedValues[param.name] };
+          if (param.isSelect || param.isStress || param.isRecommendedNumeric) {
+            const raw = fixedValues[param.name];
+            const value = (param.isStress || param.isRecommendedNumeric)
+              ? parseFloat(raw)
+              : raw;
+            submissionParams[param.name] = { value };
           } else {
             submissionParams[param.name] = {
               min: parseFloat(ranges[param.name]?.min),
@@ -292,8 +307,7 @@ const OptimizationConfigModal = ({
                       id={`check-${param.name}`}
                       checked={!!checkedParams[param.name]}
                       onCheckedChange={() => handleCheckboxChange(param.name)}
-                      // 💥 移除了 isTaskRunning
-                      disabled={param.isStress || param.isSelect}
+                      disabled={param.isStress || param.isSelect || param.isRecommendedNumeric}
                     />
                     <div className="flex flex-col">
                       <label htmlFor={`check-${param.name}`} className="font-medium text-sm truncate cursor-pointer" title={param.name}>
@@ -302,7 +316,22 @@ const OptimizationConfigModal = ({
                       <span className="text-[10px] text-gray-400 font-mono truncate">{param.name}</span>
                     </div>
                     
-                    {param.isSelect ? (
+                    {param.isRecommendedNumeric ? (
+                      <div className="col-span-2">
+                        <RecommendedNumberInput
+                          value={fixedValues[param.name] ?? ''}
+                          onChange={(v) => {
+                            manualOverridesRef.current[param.name] = true;
+                            setFixedValues(prev => ({ ...prev, [param.name]: v }));
+                          }}
+                          recommended={recommendations[param.name]}
+                          reason={`已勾选 ${extendedParams.filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name) && checkedParams[p.name]).length} 个优化变量，根据规模推荐`}
+                          min={param.min}
+                          max={param.max}
+                          disabled={!checkedParams[param.name]}
+                        />
+                      </div>
+                    ) : param.isSelect ? (
                       <div className="col-span-2">
                         <Select
                           value={fixedValues[param.name] ? String(fixedValues[param.name]) : ''}
@@ -310,7 +339,6 @@ const OptimizationConfigModal = ({
                             manualOverridesRef.current[param.name] = true;
                             setFixedValues(prev => ({ ...prev, [param.name]: value }));
                           }}
-                          // 💥 移除了 disabled={isTaskRunning}
                         >
                           <SelectTrigger className="h-8">
                             <SelectValue placeholder="选择..." />
