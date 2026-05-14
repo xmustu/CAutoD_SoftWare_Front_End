@@ -228,10 +228,10 @@ const WorkflowGuide = () => (
     <div className="text-left max-w-2xl mx-auto bg-blue-50 p-4 rounded-lg border border-blue-200 mb-8">
         <h2 className="text-lg font-semibold text-blue-800 mb-2">第一步：几何建模</h2>
         <ol className="list-decimal list-inside text-gray-700 space-y-1">
-            <li>在本页面输入您想设计的模型描述，生成并下载 <strong>.step</strong> 文件。</li>
-            <li>在 SolidWorks 中打开下载的 <strong>.step</strong> 文件，进行特征重建并标记相关参数。</li>
-            <li>将处理后的文件另存为 <strong>.sldprt</strong> 格式。</li>
-            <li>前往【设计优化】页面，上传您的 <strong>.sldprt</strong> 文件以进行后续的优化分析。</li>
+            <li>在本页面输入您想设计的模型描述，生成并下载 <strong>.model</strong> 文件（如需在 SolidWorks 中二次编辑，也可使用 <strong>.step</strong> 格式）。</li>
+            <li>若直接使用 <strong>.model</strong>：可跳过 SolidWorks，前往【设计优化】页面上传该文件即可。</li>
+            <li>若需在 SolidWorks 中处理：打开 <strong>.step</strong> 进行特征重建并标记参数，另存为 <strong>.sldprt</strong>。</li>
+            <li>前往【设计优化】页面，上传 <strong>.model</strong> 或 <strong>.sldprt</strong> 文件以进行后续的优化分析。</li>
         </ol>
     </div>
 );

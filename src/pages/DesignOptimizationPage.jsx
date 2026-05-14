@@ -74,7 +74,7 @@ const WorkflowGuide = ({ queueLength, runningTasks }) => {
       <h2 className="text-lg font-semibold text-green-800 mb-2">第二步：设计优化</h2>
       <ol className="list-decimal list-inside text-gray-700 space-y-1">
         <li>请先在【几何建模】页面完成初始模型的设计和导出。</li>
-        <li>上传您在 SolidWorks 中处理过的 <strong>.sldprt</strong> 文件。</li>
+        <li>上传几何建模模块导出的 <strong>.model</strong> 文件，或在 SolidWorks 中处理过的 <strong>.sldprt</strong> 文件。</li>
         <li>点击下方的“开始优化”按钮，系统将对上传的模型进行分析与优化。</li>
         <li>系统将执行优化，您可以根据结果进行多轮迭代，直到满意为止。</li>
       </ol>

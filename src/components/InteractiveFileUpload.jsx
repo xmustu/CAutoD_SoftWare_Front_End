@@ -42,15 +42,20 @@ const InteractiveFileUpload = ({ onFileSelect, onStart, selectedFile, isStreamin
   }, [status]);
 
   // 🆕 新增：文件格式校验函数
+  // 支持的模型文件后缀：
+  //   .sldprt  —— 用户在 SolidWorks 中处理后另存的零件文件
+  //   .model   —— 几何建模模块后端直接输出的模型文件
+  const ALLOWED_EXTENSIONS = ['.sldprt', '.model'];
+
   const validateAndSelectFile = (file) => {
     if (!file) return;
 
     const fileName = file.name.toLowerCase();
-    // 检查后缀名
-    if (!fileName.endsWith('.sldprt')) {
-      toast.error('文件格式错误！请上传 .sldprt 格式的 SolidWorks 文件。');
+    const isAllowed = ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext));
+    if (!isAllowed) {
+      toast.error('文件格式错误！请上传 .sldprt 或 .model 格式的模型文件。');
       setStatus('error'); // 可以选择显示错误状态
-      return; 
+      return;
     }
 
     onFileSelect(file);
@@ -120,7 +125,7 @@ const InteractiveFileUpload = ({ onFileSelect, onStart, selectedFile, isStreamin
         ref={fileInputRef}
         onChange={handleFileChange}
         className="hidden"
-        accept=".sldprt"
+        accept=".sldprt,.model"
       />
 
       {/* 拖拽/上传区域 */}
@@ -143,7 +148,7 @@ const InteractiveFileUpload = ({ onFileSelect, onStart, selectedFile, isStreamin
             <Upload className={`h-6 w-6 ${isDragging ? 'text-blue-600' : 'text-green-600'}`} />
           </div>
           <p className="text-sm font-medium text-gray-700">
-            {isDragging ? '释放以添加文件' : '点击或拖拽上传 .sldprt 模型文件'}
+            {isDragging ? '释放以添加文件' : '点击或拖拽上传 .sldprt / .model 模型文件'}
           </p>
           <p className="text-xs text-gray-400 mt-1">支持最大 50MB</p>
         </div>
