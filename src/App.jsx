@@ -11,7 +11,8 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import CreateProjectPage from './pages/CreateProjectPage';
 import GeometricModelingPage from './pages/GeometricModelingPage';
-import PartRetrievalPage from './pages/PartRetrievalPage';
+// 零件检索已下线（保留源文件以便后续恢复）
+// import PartRetrievalPage from './pages/PartRetrievalPage';
 import DesignOptimizationPage from './pages/DesignOptimizationPage';
 import SoftwareInterfacePage from './pages/SoftwareInterfacePage';
 import DifyTestPage from './pages/DifyTestPage';
@@ -57,7 +58,8 @@ function App() {
               <Route index element={<Navigate to="/create-project" />} />
               <Route path="create-project" element={<CreateProjectPage />} />
               <Route path="geometry" element={<GeometricModelingPage />} />
-              <Route path="parts" element={<PartRetrievalPage />} />
+              {/* 零件检索已下线 */}
+              {/* <Route path="parts" element={<PartRetrievalPage />} /> */}
               <Route path="design-optimization" element={<DesignOptimizationPage />} />
               <Route path="software-interface" element={<SoftwareInterfacePage />} />
               <Route path="dify-test" element={<DifyTestPage />} />

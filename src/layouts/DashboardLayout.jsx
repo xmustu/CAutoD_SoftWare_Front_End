@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, Bell, ChevronDown, Plus, MessageSquare, Search, Settings2, Code, User, Clock, ListChecks, Shield, Bot } from 'lucide-react';
+import { LogOut, Settings, Bell, ChevronDown, Plus, MessageSquare, Settings2, Code, User, Clock, ListChecks, Shield, Bot } from 'lucide-react';
 import useUserStore from '../store/userStore';
 import TaskQueue from '@/components/TaskQueue';
 import useConversationStore from '../store/conversationStore';
@@ -54,7 +54,6 @@ const Sidebar = () => {
       <NavItem to="/create-project" icon={Plus} text="创建项目" />
       <nav className="mt-6 flex-1">
         <NavItem to="/geometry" icon={MessageSquare} text="几何建模" onClick={startNewConversation} />
-        <NavItem to="/parts" icon={Search} text="零件检索" onClick={startNewConversation} />
         <NavItem to="/design-optimization" icon={Settings2} text="设计优化" onClick={startNewConversation} />
         <NavItem to="/software-interface" icon={Code} text="软件界面" onClick={startNewConversation} />
         <NavItem to="/dify-test" icon={Bot} text="Dify test" onClick={() => setActiveConversationId(null)} />
@@ -156,7 +155,7 @@ const DashboardLayout = () => {
   const { fetchConversations, addConversation } = useConversationStore();
   const location = useLocation();
   const [isTaskQueueOpen, setIsTaskQueueOpen] = useState(false);
-  const isFlushPage = ['/geometry', '/parts', '/design-optimization', '/software-interface'].includes(location.pathname);
+  const isFlushPage = ['/geometry', '/design-optimization', '/software-interface'].includes(location.pathname);
 
   useEffect(() => {
     if (user && user.user_id) {

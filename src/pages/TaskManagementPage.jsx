@@ -193,7 +193,6 @@ const TaskManagementPage = () => {
               <option value="">所有类型</option>
               <option value="geometry">几何建模</option>
               <option value="optimize">设计优化</option>
-              <option value="retrieval">零件检索</option>
             </select>
             <select
               value={filters.status}

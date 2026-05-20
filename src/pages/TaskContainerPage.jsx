@@ -37,7 +37,6 @@ const FilterBar = ({ filterType, setFilterType, filterStatus, setFilterStatus, s
                 <SelectItem value="all">全部类型</SelectItem>
                 <SelectItem value="geometry">几何建模</SelectItem>
                 <SelectItem value="optimize">设计优化</SelectItem>
-                <SelectItem value="retrieval">零件检索</SelectItem>
             </SelectContent>
         </Select>
 

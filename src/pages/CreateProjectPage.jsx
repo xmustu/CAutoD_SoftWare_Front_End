@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.jsx';
-import { MessageSquare, Search, Settings2, Code, ArrowRight, Clock, Box, Puzzle, Sparkles } from 'lucide-react';
+import { MessageSquare, Settings2, Code, ArrowRight, Clock, Box, Sparkles } from 'lucide-react';
 import useUserStore from '../store/userStore';
 import useConversationStore from '../store/conversationStore';
 import { useNavigate } from 'react-router-dom';
@@ -9,18 +9,21 @@ import { useNavigate } from 'react-router-dom';
 /**
  * 功能入口卡片（带引导描述）
  */
-const QuickActionCard = ({ icon: Icon, title, description, onClick, color }) => (
+const QuickActionCard = ({ icon: Icon, title, description, onClick, color, accent }) => (
   <button
     onClick={onClick}
-    className="group flex flex-col items-start p-5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-blue-300 transition-all text-left w-full"
+    className="group relative flex flex-col items-start p-6 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-blue-300 transition-all duration-200 text-left w-full overflow-hidden"
   >
-    <div className={`p-2.5 rounded-lg ${color} mb-3`}>
-      <Icon className="h-5 w-5 text-white" />
+    {/* 左侧色条 */}
+    <div className={`absolute left-0 top-0 bottom-0 w-1 ${accent || color}`} />
+
+    <div className={`p-3 rounded-lg ${color} mb-4 shadow-sm`}>
+      <Icon className="h-6 w-6 text-white" />
     </div>
-    <h3 className="text-base font-semibold text-gray-800 mb-1">{title}</h3>
-    <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
-    <div className="mt-3 flex items-center text-xs text-blue-500 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-      开始使用 <ArrowRight className="h-3 w-3 ml-1" />
+    <h3 className="text-lg font-semibold text-gray-800 mb-1.5">{title}</h3>
+    <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+    <div className="mt-4 flex items-center text-sm text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+      开始使用 <ArrowRight className="h-4 w-4 ml-1" />
     </div>
   </button>
 );
@@ -32,7 +35,6 @@ const HistoryCard = ({ title, time, taskType, onClick }) => {
   const typeConfig = {
     geometry: { label: '几何建模', color: 'bg-blue-500' },
     optimize: { label: '设计优化', color: 'bg-orange-500' },
-    retrieval: { label: '零件检索', color: 'bg-green-500' },
   };
   const config = typeConfig[taskType];
 
@@ -81,7 +83,7 @@ const CreateProjectPage = () => {
         <h1 className="text-3xl font-bold text-gray-800">
           {getGreeting()}，{user?.username || '用户'}
         </h1>
-        <p className="text-gray-500 mt-1">选择一个功能模块开始您的 CAD 设计工作</p>
+        <p className="text-gray-500 mt-1">几何建模 · 设计优化 · 软件界面 — 三大模块即开即用</p>
       </div>
 
       {/* 功能模块入口 */}
@@ -90,20 +92,13 @@ const CreateProjectPage = () => {
           <Sparkles className="h-5 w-5 text-blue-500" />
           功能模块
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <QuickActionCard
             icon={Box}
             title="几何建模"
             description="通过自然语言描述创建 3D 几何模型，支持参数化设计"
             onClick={() => navigate('/geometry')}
             color="bg-blue-500"
-          />
-          <QuickActionCard
-            icon={Search}
-            title="零件检索"
-            description="在零件库中检索相似零件，快速复用已有设计"
-            onClick={() => navigate('/parts')}
-            color="bg-green-500"
           />
           <QuickActionCard
             icon={Settings2}

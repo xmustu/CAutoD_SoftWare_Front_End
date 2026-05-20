@@ -42,16 +42,13 @@ const TaskListPage = () => {
       case 'geometry':
         navigate('/geometry');
         break;
-      case 'retrieval':
-        navigate('/parts');
-        break;
       case 'optimize': // 修正 task_type 的值
         navigate('/design-optimization');
         break;
       default:
-        // 如果有其他或未知的任务类型，可以跳转到一个默认页面或不跳转
+        // 未知任务类型默认跳转几何建模（零件检索已下线）
         console.warn(`Unknown task type: ${task.task_type}, navigating to default.`);
-        navigate('/parts'); // 默认为零件检索
+        navigate('/geometry');
         break;
     }
   };
