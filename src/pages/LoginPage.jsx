@@ -4,6 +4,7 @@ import useUserStore from '../store/userStore';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Box, Settings2, Code, Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ const LoginPage = () => {
       data.append('password', formData.password);
       
       await login(data);
-      navigate('/dashboard');
+      navigate('/create-project');
     } catch (err) {
       console.error('登录失败:', err);
     } finally {
@@ -43,23 +44,12 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="flex w-full max-w-4xl shadow-lg rounded-lg overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4">
+      <div className="flex w-full max-w-4xl shadow-2xl rounded-2xl overflow-hidden bg-white">
         {/* Left side: Form */}
-        <div className="w-1/2 bg-white p-8">
-          <h2 className="text-2xl font-bold mb-2 text-center">登录</h2>
-          <p className="text-center text-gray-500 mb-6">输入您的用户名或邮箱和密码</p>
-
-          <Button variant="outline" className="w-full mb-4">
-            <img src="/src/assets/google_logo_icon_169090.svg" alt="Google" className="w-5 h-5 mr-2" />
-            Google 登录
-          </Button>
-
-          <div className="flex items-center my-4">
-            <hr className="w-full" />
-            <span className="px-2 text-gray-400">or</span>
-            <hr className="w-full" />
-          </div>
+        <div className="w-1/2 bg-white p-10 flex flex-col justify-center">
+          <h2 className="text-3xl font-bold mb-2 text-gray-800">欢迎回来</h2>
+          <p className="text-gray-500 mb-8">登录 CAutoD 智能 CAD 平台</p>
 
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
@@ -105,8 +95,13 @@ const LoginPage = () => {
               </Link>
             </div>
             
-            <Button type="submit" disabled={loading} className="w-full bg-pink-600 text-white hover:bg-pink-700">
-              {loading ? '登录中...' : '登录'}
+            <Button type="submit" disabled={loading} className="w-full bg-blue-600 text-white hover:bg-blue-700 transition-colors h-11 text-base font-medium">
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  登录中...
+                </>
+              ) : '登录'}
             </Button>
           </form>
           
@@ -121,13 +116,46 @@ const LoginPage = () => {
         </div>
 
         {/* Right side: Branding */}
-        <div className="w-1/2 bg-blue-800 p-8 flex flex-col items-center justify-center text-white">
-          <h1 className="text-5xl font-bold mb-4">CAutoD</h1>
-          <p className="mb-6">AI-powered CAD Platform</p>
-          {/* Dark/Light mode toggle */}
-          <div className="flex items-center bg-blue-700 rounded-full p-1">
-            <Button size="sm" className="bg-white text-blue-800 rounded-full">白天模式</Button>
-            <Button size="sm" variant="ghost" className="rounded-full">夜间模式</Button>
+        <div className="w-1/2 bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-10 flex flex-col justify-center text-white relative overflow-hidden">
+          {/* 装饰光晕 */}
+          <div className="absolute -top-20 -right-20 w-60 h-60 bg-blue-400/20 rounded-full blur-3xl" />
+          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-indigo-400/20 rounded-full blur-3xl" />
+
+          <div className="relative">
+            <h1 className="text-5xl font-bold mb-2 tracking-tight">CAutoD</h1>
+            <p className="text-blue-200 mb-10 text-lg">AI-powered CAD Platform</p>
+
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm shrink-0">
+                  <Box className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold">自然语言建模</p>
+                  <p className="text-sm text-blue-200/80">一句话生成参数化 3D 模型</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm shrink-0">
+                  <Settings2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold">多目标优化</p>
+                  <p className="text-sm text-blue-200/80">遗传/启发式算法自动寻优</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm shrink-0">
+                  <Code className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold">CAD 智能操控</p>
+                  <p className="text-sm text-blue-200/80">AI 辅助驱动主流 CAD 软件</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

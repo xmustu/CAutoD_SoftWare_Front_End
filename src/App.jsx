@@ -17,7 +17,6 @@ import DesignOptimizationPage from './pages/DesignOptimizationPage';
 import SoftwareInterfacePage from './pages/SoftwareInterfacePage';
 import DifyTestPage from './pages/DifyTestPage';
 import HistoryPage from './pages/HistoryPage';
-//import TaskListPage from './pages/TaskListPage';
 import TaskContainerPage from './pages/TaskContainerPage';
 import TaskDetailPage from './pages/TaskDetailPage';
 // 管理员页面
@@ -29,6 +28,7 @@ import SystemSettingsPage from './pages/SystemSettingsPage';
 import useUserStore from './store/userStore';
 //  引入远程新页面
 import RemoteDesktopPage from './pages/RemoteDesktopPage';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Admin route protection
 const AdminRoute = ({ children }) => {
@@ -43,6 +43,7 @@ function App() {
   const { token } = useUserStore();
 
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <Routes>
         {/* 公共路由 */}
@@ -96,6 +97,7 @@ function App() {
         )}
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
