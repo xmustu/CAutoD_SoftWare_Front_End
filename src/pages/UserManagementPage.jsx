@@ -13,6 +13,7 @@ import {
   Crown,
   User as UserIcon
 } from 'lucide-react';
+import { devLog } from '../utils/devLog';
 import {
   getUserList,
   createUser,
@@ -62,7 +63,7 @@ const UserManagementPage = () => {
         role: filters.role || undefined
       });
       
-      console.log('用户列表响应:', response);
+      devLog('用户列表响应:', response);
       
       if (response && response.items) {
         setUsers(response.items);

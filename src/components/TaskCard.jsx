@@ -4,6 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Eye, Trash2, Clock, CheckCircle, XCircle, Loader, Bot, Workflow } from 'lucide-react';
 import { format } from 'date-fns';
+import { devLog } from '@/utils/devLog';
 
 /**
  * 任务卡片组件
@@ -22,11 +23,11 @@ const TaskCard = ({
     const handleCardClick = (e) => {
         // 如果点击的是 checkbox 或按钮，不触发卡片点击
         if (e.target.closest('button') || e.target.closest('[role="checkbox"]')) {
-            console.log('🚫 TaskCard: 点击了按钮或checkbox,不跳转');
+            devLog('🚫 TaskCard: 点击了按钮或checkbox,不跳转');
             return;
         }
 
-        console.log('🖱️ TaskCard: 卡片被点击', task);
+        devLog('🖱️ TaskCard: 卡片被点击', task);
 
         // 根据任务类型跳转到对应的对话页面
         const routes = {
@@ -37,7 +38,7 @@ const TaskCard = ({
 
         const targetRoute = routes[task.task_type] || '/tasks';
 
-        console.log('🎯 TaskCard: 准备跳转', {
+        devLog('🎯 TaskCard: 准备跳转', {
             taskType: task.task_type,
             targetRoute,
             conversationId: task.conversation_id,
@@ -53,7 +54,7 @@ const TaskCard = ({
             }
         });
 
-        console.log('✅ TaskCard: navigate已调用');
+        devLog('✅ TaskCard: navigate已调用');
     };
 
     const getStatusIcon = (status) => {

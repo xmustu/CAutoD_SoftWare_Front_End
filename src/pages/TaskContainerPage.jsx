@@ -17,6 +17,7 @@ import TaskCard from '@/components/TaskCard';
 import Pagination from '@/components/Pagination';
 import useUserStore from '@/store/userStore';
 import axios from 'axios';
+import { devLog } from '@/utils/devLog';
 
 /**
  * 筛选工具栏组件
@@ -222,7 +223,7 @@ const TaskContainerPage = () => {
             const res = await axios.get(`${import.meta.env.VITE_API_URL}/tasks/optimize/queue_length`);
             setOptimizeQueueLength(res.data.length ?? 0);
             setOptimizeRunningTasks(res.data.running ?? 0);
-            console.log('📊 优化队列状态:', res.data);
+            devLog('📊 优化队列状态:', res.data);
         } catch (err) {
             console.error('获取优化队列状态失败:', err);
         }
@@ -263,7 +264,7 @@ const TaskContainerPage = () => {
             });
             const mergedTasks = Array.from(taskMap.values());
 
-            console.log('📋 队列任务:', { redis: redisTasks.length, mysql: mysqlQueuedTasks.length, merged: mergedTasks.length });
+            devLog('📋 队列任务:', { redis: redisTasks.length, mysql: mysqlQueuedTasks.length, merged: mergedTasks.length });
 
             const startIndex = (page - 1) * queuePagination.limit;
             const endIndex = startIndex + queuePagination.limit;
@@ -292,7 +293,7 @@ const TaskContainerPage = () => {
                 offset: 0
             });
 
-            console.log('📊 已完成任务列表:', tasks);
+            devLog('📊 已完成任务列表:', tasks);
 
             setAllTasks(Array.isArray(tasks) ? tasks : []);
 

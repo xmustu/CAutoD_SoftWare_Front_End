@@ -18,6 +18,7 @@ import QueueStatusBanner from '@/components/QueueStatusBanner.jsx';
 import ProtectedImage from '@/components/ProtectedImage'; // 导入 ProtectedImage 组件
 import OptimizationConfigModal from '@/components/OptimizationConfigModal';
 import FloatingConfigButton from '@/components/FloatingConfigButton';
+import { devLog } from '@/utils/devLog';
 // import { listenOptimizationSSE } from "@/api/conversationapi";
 // import { getOptimizationQueue } from "@/api/conversationapi";
 import axios from 'axios';
@@ -444,7 +445,7 @@ const DesignOptimizationPage = () => {
   // 💥 新增: 从任务列表跳转时自动加载历史对话
   useEffect(() => {
     if (location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId) {
-      console.log('🔄 从任务列表跳转,自动加载历史对话:', location.state);
+      devLog('🔄 从任务列表跳转,自动加载历史对话:', location.state);
 
       // **关键修复**: 立即设置loading状态,防止显示空白页面
       setIsLoadingFromTaskList(true);
@@ -538,7 +539,7 @@ const DesignOptimizationPage = () => {
   }, [messages]);
 
   const handleParametersExtracted = useCallback((params) => {
-    console.log("DesignOptimizationPage: Parameters extracted from AI message:", params);
+    devLog("DesignOptimizationPage: Parameters extracted from AI message:", params);
     setOptimizableParams(params);
     // 💥 核心修复：一旦提取到参数，意味着AI进入了“等待用户配置”的阶段
     // 我们必须手动将运行状态设为 false，否则按钮会被隐藏
@@ -562,7 +563,7 @@ const DesignOptimizationPage = () => {
     //  不再处理曲线图。让 updateLastAiMessage 内部逻辑处理所有其他图片。
   }, []);
   const handleRangesSubmit = async (ranges) => {
-    console.log("Submitted ranges:", ranges);
+    devLog("Submitted ranges:", ranges);
     setIsSecondRoundCompleted(false);
 
     try {
@@ -674,7 +675,7 @@ const DesignOptimizationPage = () => {
             //   img.altText === "收敛曲线" || img.altText === "参数分布图"
             // );
             // if (specialImages.length > 0) {
-            //   console.log("message_end后收到特殊图片：", specialImages);
+            //   devLog("message_end后收到特殊图片：", specialImages);
             // }
             // 在消息结束时提取参数
             if (data.answer && data.metadata && data.metadata.cad_file === "model.step" && data.metadata.code_file === "script.py") {

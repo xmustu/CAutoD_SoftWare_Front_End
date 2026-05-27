@@ -13,6 +13,7 @@ import {
   XCircle,
   Loader
 } from 'lucide-react';
+import { devLog } from '../utils/devLog';
 import {
   getTaskList,
   deleteTask,
@@ -54,7 +55,7 @@ const TaskManagementPage = () => {
         user_id: filters.user_id || undefined
       });
       
-      console.log('任务列表响应:', response);
+      devLog('任务列表响应:', response);
       
       if (response && response.items) {
         setTasks(response.items);

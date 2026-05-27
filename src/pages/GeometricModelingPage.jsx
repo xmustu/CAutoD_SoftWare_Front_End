@@ -20,6 +20,7 @@ import useUserStore from '@/store/userStore';
 import useConversationStore from '@/store/conversationStore';
 import ConversationDisplay from '@/components/ConversationDisplay.jsx';
 import ThreeDViewer from '@/components/ThreeDViewer';
+import { devLog } from '@/utils/devLog';
 const GEOMETRY_BOT_ID = 'ep-m-20251211113938-sr72q';
 
 // ----------------------------------------------------------------------
@@ -289,7 +290,7 @@ const GeometricModelingPage = () => {
     // 💥 从任务列表跳转时自动加载历史对话
     useEffect(() => {
         if (location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId) {
-            console.log('🔄 GeometricModelingPage: 从任务列表跳转, 加载历史对话:', location.state);
+            devLog('🔄 GeometricModelingPage: 从任务列表跳转, 加载历史对话:', location.state);
             setIsLoadingFromTaskList(true);
             const { taskId, conversationId } = location.state;
             fetchMessagesForTask(taskId, conversationId).then(() => {
@@ -309,7 +310,7 @@ const GeometricModelingPage = () => {
         // 组件卸载时：中断 SSE + 清空状态
         return () => {
             if (sseRef.current) {
-                console.log('🛑 GeometricModelingPage 卸载，中断 SSE 连接');
+                devLog('🛑 GeometricModelingPage 卸载，中断 SSE 连接');
                 sseRef.current.close();
                 sseRef.current = null;
             }
@@ -364,7 +365,7 @@ const GeometricModelingPage = () => {
 
             const stlFile = lastAiMsg.metadata?.stl_file;
             if (stlFile && stlFile !== loadedFileRef.current) {
-                console.log("自动加载新生成的模型:", stlFile);
+                devLog("自动加载新生成的模型:", stlFile);
                 handleShowModel(stlFile);
             }
         }
@@ -394,7 +395,7 @@ const GeometricModelingPage = () => {
                 const fileToLoad = stlFile || cadFile;
 
                 if (fileToLoad && fileToLoad !== loadedFileRef.current && activeTaskId && activeConversationId) {
-                    console.log("正在从历史记录恢复模型:", fileToLoad);
+                    devLog("正在从历史记录恢复模型:", fileToLoad);
                     setTimeout(() => handleShowModel(fileToLoad), 100);
                 }
             }
@@ -474,7 +475,7 @@ const GeometricModelingPage = () => {
     // 💥 新建任务：中断旧 SSE + 重置所有状态
     const handleNewTask = () => {
         if (sseRef.current) {
-            console.log('🛑 中断旧 SSE 连接');
+            devLog('🛑 中断旧 SSE 连接');
             sseRef.current.close();
             sseRef.current = null;
         }
@@ -493,7 +494,7 @@ const GeometricModelingPage = () => {
         setHighlightState({ name: null, isHighlighted: false });
         loadedFileRef.current = null;
         setInputValue('');
-        console.log('🆕 已中断旧连接并重置所有状态，可以创建新任务');
+        devLog('🆕 已中断旧连接并重置所有状态，可以创建新任务');
     };
 
     const handleSendMessage = async () => {
@@ -595,7 +596,7 @@ const GeometricModelingPage = () => {
                 if (currentTaskIdRef.current !== taskIdToUse) return;
                 const duration = Math.round(performance.now() - startTime);
                 setExecutionTime(duration);
-                console.log(
+                devLog(
                     `%c [CAutoD Performance] %c Task Completed %c ${duration}ms `,
                     'background:#35495e ; padding: 1px; border-radius: 3px 0 0 3px;  color: #fff',
                     'background:#41b883 ; padding: 1px; border-radius: 0 3px 3px 0;  color: #fff',

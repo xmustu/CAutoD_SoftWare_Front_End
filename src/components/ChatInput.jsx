@@ -2,6 +2,7 @@ import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Paperclip, ArrowUp, X, File as FileIcon } from 'lucide-react';
+import { devLog } from '@/utils/devLog';
 
 const ChatInput = ({ 
   inputValue, 
@@ -64,7 +65,7 @@ const ChatInput = ({
             size="icon" 
             className="bg-pink-500 hover:bg-pink-600 rounded-md" 
             onClick={() => {
-              console.log("ChatInput: Send button clicked.");
+              devLog("ChatInput: Send button clicked.");
               onSendMessage();
             }} 
             disabled={isStreaming || (!inputValue.trim() && !selectedFile) || disabled}

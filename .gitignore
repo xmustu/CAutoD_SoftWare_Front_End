@@ -25,3 +25,7 @@ dist-ssr
 
 # Cline rules
 .clinerules/
+
+# ESLint 输出报告（本地工具产物，不进版本控制）
+eslint-output.json
+eslint-json.json

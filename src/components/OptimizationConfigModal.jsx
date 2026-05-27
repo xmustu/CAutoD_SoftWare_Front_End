@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from "@/components/ui/checkbox";
+import { devLog } from '@/utils/devLog';
 import {
   Select,
   SelectContent,
@@ -71,7 +72,7 @@ const OptimizationConfigModal = ({
     if (hasInitialized) return;
     if (!params || params.length === 0) return;
 
-    console.log("OptimizationConfigModal: Initializing form snapshot...");
+    devLog("OptimizationConfigModal: Initializing form snapshot...");
 
     const extractedParams = params.filter(p => !fixedParamsDefinitions.some(fp => fp.name === p.name));
     const combinedParams = [...extractedParams];

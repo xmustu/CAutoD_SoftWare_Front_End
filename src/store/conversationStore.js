@@ -7,6 +7,7 @@ import {
   getHistoryAPI,
   getTaskHistoryAPI,
 } from "../api/conversationAPI";
+import { devLog } from "../utils/devLog";
 
 const useConversationStore = create((set, get) => ({
   conversations: [],
@@ -70,11 +71,11 @@ const useConversationStore = create((set, get) => ({
         // 1. 处理文本块
         if (update.textChunk !== undefined) {
           // 💥 添加日志：确认更新是否被触发
-          console.log("✅ Store: 合并文本块:", update.textChunk);
-          console.log("📝 更新前的 content:", updatedMessage.content);
+          devLog("✅ Store: 合并文本块:", update.textChunk);
+          devLog("📝 更新前的 content:", updatedMessage.content);
           updatedMessage.content =
             (updatedMessage.content || "") + update.textChunk;
-          console.log("📝 更新后的 content:", updatedMessage.content);
+          devLog("📝 更新后的 content:", updatedMessage.content);
         }
         // 💥 【新增/修改】处理流中传输的独立元数据（用于实时进度）
         if (update.metadata !== undefined) {
@@ -82,7 +83,7 @@ const useConversationStore = create((set, get) => ({
             ...updatedMessage.metadata,
             ...update.metadata
           };
-          console.log("Store: Metadata updated (Progress/Info)", updatedMessage.metadata);
+          devLog("Store: Metadata updated (Progress/Info)", updatedMessage.metadata);
         }
         // 2. 处理图片块
         if (update.image !== undefined) {
@@ -103,8 +104,8 @@ const useConversationStore = create((set, get) => ({
 
         // 3. 处理结束信号 (修改 metadata 的处理逻辑)
         if (update.finalData !== undefined) {
-          console.log("conversationStore: Final Metadata Content:", update.finalData.metadata); // 👈 打印这一行
-          console.log(
+          devLog("conversationStore: Final Metadata Content:", update.finalData.metadata); // 👈 打印这一行
+          devLog(
             "conversationStore: Updating with finalData:",
             update.finalData
           );
@@ -118,12 +119,12 @@ const useConversationStore = create((set, get) => ({
           if (update.finalData.suggested_questions) {
             updatedMessage.suggested_questions =
               update.finalData.suggested_questions;
-            console.log(
+            devLog(
               "conversationStore: Successfully updated suggested_questions:",
               updatedMessage.suggested_questions
             );
           } else {
-            console.log(
+            devLog(
               "conversationStore: No suggested_questions in finalData."
             );
           }
