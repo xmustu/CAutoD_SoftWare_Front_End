@@ -2,122 +2,183 @@
 
 ## Goal
 
-在今天 17:00 前形成一个稳定版本，覆盖两类交付：
+在几何建模模块中完成两项后端接口适配：
 
-1. `pretext` 前端轻量化适配研究汇报材料，重点围绕 `AiMessage`/长文本渲染场景如何降低服务端与前端整体负载。
-2. 为当前 React 18 前端项目补齐最小测试基础设施，并跑通一个明显且可验收的测试点。
+1. 为 Dify / Agent 执行模式新增后端几何执行版本选择，默认选择 `v1`，并在调用 `/tasks/execute` 时把所选 `version` 透传给后端。
+2. 在任务执行中提供红色“终止任务”按钮，二次确认后调用 `POST /tasks/{task_id}/cancel` 终止当前正在运行的任务。
+
+已确认约束：
+
+1. `provider` 保持当前逻辑，不为了本次需求改写 provider 取值或默认值。
+2. 版本默认值为 `v1`。
+3. 版本选择 UI 放在 Dify / Agent 模式切换区下面。
+4. 不引入新的外部依赖。
+5. 终止任务按钮放在几何建模工作视图右侧对话区顶部状态栏，靠近“新建任务”按钮。
+6. 后端服务维修期间，本地先完成 UI、请求调用链、自动化测试和截图验证。
 
 ## Planned File Changes
 
-本轮预计涉及的文件如下：
+预计修改或新增以下文件：
 
-1. `package.json`
-2. `vite.config.js`
-3. `src/components/ConversationDisplay.jsx`
-4. `src/components/ChatInput.jsx` 或其他最终选定的首个测试目标组件
-5. `src/store/conversationStore.js`（仅在需要抽离纯函数或降低耦合时修改）
-6. `src/test/setup.js`
-7. `src/components/__tests__/ConversationDisplay.test.jsx` 或对应测试文件
-8. `前端进展汇报.md`
+1. `src/components/VersionSelector.jsx`：新增几何执行版本选择组件，提供 `v1 / v2 / v3` 三个选项。
+2. `src/components/__tests__/VersionSelector.test.jsx`：新增组件测试，覆盖默认展示、切换回调、禁用态。
+3. `src/pages/GeometricModelingPage.jsx`：新增 `version` 状态，默认 `v1`；在初始视图和工作视图中把 VersionSelector 放到 ProviderSelector 下方；调用 `executeTaskAPI` 时带上 `version`。
+4. `src/pages/__tests__/GeometricModelingPage.version.test.jsx`：新增页面级测试，验证选择 `v2/v3` 后执行请求 payload 中包含对应 `version`，同时 `provider` 仍按现有逻辑传递。
+5. `src/api/taskAPI.js`：新增 `cancelTaskAPI(taskId, body)`，封装 `POST /tasks/{task_id}/cancel`。
+6. `src/api/__tests__/taskAPI.test.js`：新增 API 层测试，验证终止任务请求路径和请求体。
+7. `src/pages/__tests__/GeometricModelingPage.cancel.test.jsx`：新增页面级测试，验证执行中显示红色终止按钮、二次确认、成功后关闭 SSE 并结束 streaming 状态。
+8. `src/mocks/taskMock.js`：如本地 mock 链路需要展示或保留版本/取消信息，则最小化补充透传；如果测试不依赖 mock，则不改。
 
-如果实施中发现需要超过以上范围的额外文件，会先重新更新计划。
+如果实施中发现必须修改超过以上范围，会先更新本计划并再次请求审批。
 
-## Design
+## Data / Interface Design
 
-### A. `pretext` 汇报与小优化落点
+### Frontend state
 
-基于 `pretext` 官方 README，核心价值是：
+在 `GeometricModelingPage` 内新增：
 
-- 通过 `prepare()` 做一次性预处理与测量缓存。
-- 通过 `layout()` 在热路径中仅做纯算术布局。
-- 避免频繁依赖 DOM 测量，从而减少 reflow。
+```js
+const [version, setVersion] = useState('v1');
+```
 
-结合当前项目，前端可落地的轻量化方向：
+### Execute request payload
 
-1. 减少 `AiMessage` 长文本/Markdown/图片混合消息渲染时的重复计算。
-2. 对流式消息仅在必要时刷新布局，避免每个 chunk 都触发重型渲染链。
-3. 对可预测的文本块高度做前置估算，降低“等完整响应返回后再整体重排”的抖动。
-4. 对消息列表采用分层渲染策略：
-   - 流式中消息使用轻量文本容器。
-   - 完成态消息再进入完整 Markdown/代码高亮/图片提取流程。
+在现有 `executeTaskAPI` 调用中保持原字段不变，新增：
 
-本轮建议先落实一个小优化：
+```js
+version: version,
+```
 
-- 抽出 `AiMessage` 的消息类型识别与图片去重逻辑，减少流式更新期间的重复开销。
-- 视实际代码复杂度，可进一步增加“流式中跳过部分重型渲染”的保护条件。
+目标请求体形态：
 
-这类优化与 `pretext` 的关联表达方式：
+```js
+{
+  query,
+  user,
+  conversation_id,
+  task_id,
+  task_type: 'geometry',
+  provider,
+  version, // 'v1' | 'v2' | 'v3'
+  files,
+}
+```
 
-- 不直接引入 `pretext` 到生产代码。
-- 先把“预处理缓存、热路径轻量化、减少布局/重排成本”的思想映射到现有消息渲染链。
-- 汇报中说明：后续若消息列表出现超长内容/高频流式输出，可评估把 `pretext` 用于文本高度预测、虚拟列表预估高度、无 DOM 文本测量等场景。
+### Cancel request payload
 
-### B. 测试方案
+新增 API 封装：
 
-当前项目没有测试模块，建议先补最小测试栈：
+```js
+export const cancelTaskAPI = (taskId, body = {}) => {
+  return post(`/tasks/${taskId}/cancel`, body);
+};
+```
 
-- `vitest`
-- `jsdom`
-- `@testing-library/react`
-- `@testing-library/jest-dom`
-- `@testing-library/user-event`
+页面行为：
 
-不新增 E2E 工具，不引入 Cypress/Playwright，保持轻量。
+1. 仅当 `isStreaming && activeTaskId` 时显示“终止任务”按钮。
+2. 点击后弹出二次确认。
+3. 用户确认后调用 `cancelTaskAPI(activeTaskId)`。
+4. 成功后关闭当前 SSE、清空 SSE ref、结束 `isStreaming`，并把最后一条 assistant 消息标记为“任务已终止”。
+5. 失败时恢复按钮可点击，并保留当前任务状态。
 
-首个测试点选择原则：
+### UI design
 
-- 不依赖远程后端。
-- 用户价值明确。
-- 能覆盖当前高风险交互。
-- 最好与本轮优化位置一致。
+新增 `VersionSelector`，采用和 `ProviderSelector` 接近的轻量分段控件风格：
 
-首选测试点：
+1. 标签使用“执行版本”。
+2. 选项为 `V1`、`V2`、`V3`。
+3. 禁用态跟随 `isStreaming`，任务执行中不可切换。
+4. 在初始输入视图和工作视图底部输入区中，都放在 `ProviderSelector` 下方，保持紧凑间距。
 
-- `ConversationDisplay` 在 `filterTaskType="optimize"` 或 `"geometry"` 下，能正确保留用户消息，并基于 `task_type`/推断逻辑筛选 AI 消息。
+### Cancel UI design
 
-原因：
+终止任务按钮放在工作视图右侧顶部状态栏：
 
-- 这是当前会话主链路。
-- 直接影响用户看到的结果是否正确。
-- 逻辑较稳定，容易先做出第一条通过测试。
-- 后续可以继续扩展到 `AiMessage` 的图片去重、`ChatInput` 的发送按钮禁用逻辑等。
-
-候选第二测试点：
-
-- `ChatInput` 在 `isStreaming`、`disabled`、空输入、有附件等条件下的按钮状态与发送行为。
+1. 默认隐藏，仅任务执行中出现。
+2. 使用红色 outline/destructive 风格，图标优先使用 `XCircle` 或 `Square` 类 lucide 图标。
+3. 文案为“终止任务”；调用中显示“正在终止...”。
+4. 二次确认先使用浏览器 `window.confirm`，避免新增复杂弹窗状态和外部依赖。
 
 ## TDD / Validation
 
-按 Red / Green / Refactor 执行：
+按 Red / Green / Refactor 执行。
 
-1. Red
-   - 新增测试基础设施与首个测试文件。
-   - 先写失败测试，运行 `vitest`，确认失败原因符合预期。
+### Red
 
-2. Green
-   - 以最小改动修正目标组件或抽离纯函数。
-   - 再次运行测试，确认通过。
+1. 先新增 `VersionSelector` 测试：
+   - 默认/受控选中 `v1` 时，`V1` 有选中态。
+   - 点击 `V2` 调用 `onChange('v2')`。
+   - `disabled=true` 时点击不触发 `onChange`。
+2. 再新增几何页面测试：
+   - Mock `executeTaskAPI`、用户 store、会话 store、`ChatInput` 等复杂依赖。
+   - 渲染几何页面初始视图。
+   - 切换版本后发送消息。
+   - 断言 `executeTaskAPI` 收到的参数包含 `version: 'v2'` 或 `version: 'v3'`。
+   - 断言 `provider` 字段仍按当前 UI 选择透传。
+3. 新增取消 API 测试：
+   - 调用 `cancelTaskAPI(123)`。
+   - 断言底层 `post` 收到 `/tasks/123/cancel` 和默认空对象请求体。
+4. 新增几何页面取消测试：
+   - 让 mock store 返回执行中的任务状态。
+   - 断言红色“终止任务”按钮出现。
+   - mock `window.confirm` 返回 `true`。
+   - 点击按钮后断言 `cancelTaskAPI(activeTaskId)` 被调用，SSE `close` 被调用，页面退出执行中状态。
+5. 运行目标测试，确认因为组件/逻辑尚未实现而失败。
 
-3. Refactor
-   - 清理无用 import。
-   - 合并重复逻辑。
-   - 检查是否引入额外副作用、定时器泄漏、对象 URL 泄漏。
+### Green
 
-验证命令预期：
+1. 新增 `VersionSelector` 组件。
+2. 在 `GeometricModelingPage` 中接入版本状态和 UI。
+3. 在 `executeTaskAPI` 参数中新增 `version`。
+4. 新增 `cancelTaskAPI`。
+5. 在 `GeometricModelingPage` 中新增取消按钮、二次确认、取消中状态和成功/失败处理。
+6. 如 mock 链路确实影响测试或本地演示，再补充 `taskMock` 的 `version` / cancel 透传。
+7. 运行目标测试，确认通过。
 
-- `npm install` 或等价安装命令
-- `npm run test`（需要新增 script）
-- `npm run lint`
-- 如有必要：`npm run build`
+### Refactor
 
-## Deliverables
+1. 清理无用 import。
+2. 检查重复样式和重复布局，必要时只做小范围整理。
+3. 确认不引入外部依赖。
+4. 运行更完整验证命令。
 
-1. 可用于今晚汇报的 `pretext` 研究摘要与前端优化建议，写入 `前端进展汇报.md`。
-2. 一套最小可运行测试基础设施。
-3. 至少 1 个通过的前端测试用例。
-4. 给 `antigravity` 的执行提示词，包含：
-   - 拉齐代码检查步骤
-   - TDD 顺序
-   - 修改范围
-   - 验证命令
-   - 提交前自检清单
+## Verification Commands
+
+计划执行：
+
+```bash
+npm run test -- VersionSelector
+npm run test -- GeometricModelingPage.version
+npm run test -- taskAPI
+npm run test -- GeometricModelingPage.cancel
+npm run test
+npm run build
+```
+
+如时间允许且环境允许，再启动本地前端：
+
+```bash
+npm run dev
+```
+
+并在浏览器中检查：
+
+1. 初始几何建模页：Dify / Agent 下方显示版本选择，默认 `V1`。
+2. 工作视图底部输入区：同样显示版本选择，任务执行中禁用。
+3. 选择不同版本后发起请求，Network payload 中包含对应 `version`。
+4. 执行中的工作视图顶部状态栏显示红色“终止任务”按钮。
+5. 点击“终止任务”出现二次确认。
+
+## Review Checklist
+
+完成后自查：
+
+1. 是否有无用 import。
+2. 是否改变了现有 `provider` 默认值或映射逻辑。
+3. 是否只在几何建模模块透传 `version`，没有影响其他任务类型。
+4. 是否存在任务执行中仍可切换版本导致 payload 不一致的问题。
+5. 终止任务是否只在执行中出现，且不会误影响“新建任务”逻辑。
+6. 取消成功后是否关闭 SSE，避免继续接收旧任务消息。
+7. 是否新增外部依赖。
+8. 测试和 build 是否通过。

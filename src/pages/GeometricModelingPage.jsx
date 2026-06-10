@@ -14,7 +14,8 @@ import {
 import ReactMarkdown from 'react-markdown';
 import ChatInput from '@/components/ChatInput.jsx';
 import ProviderSelector from '@/components/ProviderSelector.jsx';
-import { executeTaskAPI } from '@/api/taskAPI';
+import VersionSelector from '@/components/VersionSelector.jsx';
+import { cancelTaskAPI, executeTaskAPI } from '@/api/taskAPI';
 import { uploadFileAPI, downloadFileAPI } from '@/api/fileAPI.js';
 import useUserStore from '@/store/userStore';
 import useConversationStore from '@/store/conversationStore';
@@ -244,8 +245,10 @@ const WorkflowGuide = () => (
 const GeometricModelingPage = () => {
     const [inputValue, setInputValue] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
+    const [isCancellingTask, setIsCancellingTask] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
     const [provider, setProvider] = useState('agent');
+    const [version, setVersion] = useState('v1');
     const location = useLocation();
     const [isLoadingFromTaskList, setIsLoadingFromTaskList] = useState(
         () => !!(location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId)
@@ -257,6 +260,7 @@ const GeometricModelingPage = () => {
     const [lastAiContent, setLastAiContent] = useState("");
     const [lastUserPrompt, setLastUserPrompt] = useState("");
     const [isGeometryTaskStreaming, setIsGeometryTaskStreaming] = useState(false);
+    const [runningTaskId, setRunningTaskId] = useState(null);
 
     // Ref
     const loadedFileRef = useRef(null);
@@ -481,6 +485,8 @@ const GeometricModelingPage = () => {
         }
         currentTaskIdRef.current = null;
         setIsStreaming(false);
+        setIsCancellingTask(false);
+        setRunningTaskId(null);
         startNewConversation();
         if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
         setCurrentStlUrl(null);
@@ -495,6 +501,37 @@ const GeometricModelingPage = () => {
         loadedFileRef.current = null;
         setInputValue('');
         devLog('🆕 已中断旧连接并重置所有状态，可以创建新任务');
+    };
+
+    const handleCancelTask = async () => {
+        const taskIdToCancel = runningTaskId || activeTaskId || currentTaskIdRef.current;
+        if (!isStreaming || !taskIdToCancel || isCancellingTask) return;
+
+        const confirmed = window.confirm('确认终止当前正在运行的任务吗？终止后需要重新发起任务。');
+        if (!confirmed) return;
+
+        setIsCancellingTask(true);
+        try {
+            await cancelTaskAPI(taskIdToCancel);
+            if (sseRef.current) {
+                sseRef.current.close();
+                sseRef.current = null;
+            }
+            currentTaskIdRef.current = null;
+            setRunningTaskId(null);
+            setIsStreaming(false);
+            setIsGeometryTaskStreaming(false);
+            updateLastAiMessage({
+                finalData: {
+                    answer: '任务已终止',
+                    metadata: { status: 'cancelled' }
+                }
+            }, taskIdToCancel);
+        } catch (error) {
+            console.error("取消任务失败:", error);
+        } finally {
+            setIsCancellingTask(false);
+        }
     };
 
     const handleSendMessage = async () => {
@@ -546,6 +583,7 @@ const GeometricModelingPage = () => {
 
         // 💥 保存当前任务ID，用于回调守卫
         currentTaskIdRef.current = taskIdToUse;
+        setRunningTaskId(taskIdToUse);
 
         // 💥 保存 SSE 连接引用，用于后续中断
         const sseHandle = executeTaskAPI({
@@ -555,6 +593,7 @@ const GeometricModelingPage = () => {
             task_id: taskIdToUse,
             task_type: 'geometry',
             provider: provider,
+            version: version,
             files: filesForRequest,
             response_mode: "streaming",
             onMessage: {
@@ -590,6 +629,7 @@ const GeometricModelingPage = () => {
                 console.warn(`[Geometry Task Failed] Duration: ${duration}ms`, error);
                 updateLastAiMessage({ finalData: { answer: "请求出错。", metadata: {} } }, taskIdToUse);
                 setIsStreaming(false);
+                setRunningTaskId(null);
                 sseRef.current = null;
             },
             onClose: () => {
@@ -603,6 +643,7 @@ const GeometricModelingPage = () => {
                     'background:transparent; color: #333; font-weight: bold'
                 );
                 setIsStreaming(false);
+                setRunningTaskId(null);
                 sseRef.current = null;
             },
         });
@@ -625,8 +666,9 @@ const GeometricModelingPage = () => {
                 <div className="w-full max-w-2xl text-center px-4">
                     <h1 className="text-4xl font-bold mb-8 text-gray-800">您的设计需求是？</h1>
                     <WorkflowGuide />
-                    <div className="flex items-center justify-center mb-3">
+                    <div className="flex flex-col items-center gap-2 mb-3">
                         <ProviderSelector value={provider} onChange={setProvider} disabled={isStreaming} />
+                        <VersionSelector value={version} onChange={setVersion} disabled={isStreaming} />
                     </div>
                     <ChatInput
                         inputValue={inputValue}
@@ -709,20 +751,38 @@ const GeometricModelingPage = () => {
                     <span className="text-sm text-gray-500">
                         {isStreaming ? '任务执行中...' : '任务已完成'}
                     </span>
-                    <button
-                        onClick={handleNewTask}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all"
-                    >
-                        <FilePlus2 className="h-4 w-4" />
-                        新建任务
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {isStreaming && (runningTaskId || activeTaskId) && (
+                            <button
+                                type="button"
+                                onClick={handleCancelTask}
+                                disabled={isCancellingTask}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 hover:border-red-300 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                            >
+                                {isCancellingTask ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <X className="h-4 w-4" />
+                                )}
+                                {isCancellingTask ? '正在终止...' : '终止任务'}
+                            </button>
+                        )}
+                        <button
+                            onClick={handleNewTask}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all"
+                        >
+                            <FilePlus2 className="h-4 w-4" />
+                            新建任务
+                        </button>
+                    </div>
                 </div>
                 <div className="flex-1 overflow-hidden">
                     <ConversationDisplay messages={messages} isLoading={isLoadingMessages} onQuestionClick={handleQuestionClick} onImagesExtracted={() => { }} onShowModel={handleShowModel} />
                 </div>
                 <div className="p-4 border-t bg-white">
-                    <div className="flex items-center mb-2">
+                    <div className="flex flex-col items-start gap-2 mb-2">
                         <ProviderSelector value={provider} onChange={setProvider} disabled={isStreaming} />
+                        <VersionSelector value={version} onChange={setVersion} disabled={isStreaming} />
                     </div>
                     <ChatInput inputValue={inputValue} onInputChange={(e) => setInputValue(e.target.value)} onSendMessage={handleSendMessage} isStreaming={isStreaming} placeholder="输入您的修改意见..." selectedFile={selectedFile} onFileSelect={setSelectedFile} />
                 </div>

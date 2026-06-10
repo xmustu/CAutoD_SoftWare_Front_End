@@ -42,6 +42,10 @@ export const executeTaskAPI = (executeData) => {
   }
 };
 
+export const cancelTaskAPI = (taskId, body = {}) => {
+  return post(`/tasks/${taskId}/cancel`, body);
+};
+
 /**
  * 获取所有待处理的任务
  * @returns {Promise<Array>} - 包含待处理任务对象的数组
