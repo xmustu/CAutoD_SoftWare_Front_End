@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import ConversationDisplay from '../ConversationDisplay';
 
 // Mock ProtectedImage and other complex sub-components to keep this test unit-focused
@@ -15,6 +15,44 @@ vi.mock('react-markdown', () => ({
     __esModule: true,
     default: ({ children }) => <div data-testid="markdown">{children}</div>
 }));
+
+beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+            writeText: vi.fn().mockResolvedValue(undefined)
+        }
+    });
+});
+
+describe('ConversationDisplay Copy Support', () => {
+    it('allows text selection in the conversation area and AI message cards', () => {
+        render(
+            <ConversationDisplay
+                messages={[{ id: 30, role: 'assistant', content: 'copyable assistant text', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        expect(screen.getByTestId('conversation-scroll')).toHaveClass('select-text');
+        expect(screen.getByTestId('ai-message-card')).toHaveClass('select-text');
+    });
+
+    it('copies an AI message with one click', async () => {
+        render(
+            <ConversationDisplay
+                messages={[{ id: 31, role: 'assistant', content: 'copy this answer', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: '复制消息' }));
+
+        await waitFor(() => {
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('copy this answer');
+        });
+    });
+});
 
 describe('ConversationDisplay Message Filtering', () => {
     const mockMessages = [

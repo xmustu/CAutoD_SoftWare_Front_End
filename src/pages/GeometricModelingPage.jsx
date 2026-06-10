@@ -776,7 +776,7 @@ const GeometricModelingPage = () => {
                         </button>
                     </div>
                 </div>
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 overflow-hidden select-text">
                     <ConversationDisplay messages={messages} isLoading={isLoadingMessages} onQuestionClick={handleQuestionClick} onImagesExtracted={() => { }} onShowModel={handleShowModel} />
                 </div>
                 <div className="p-4 border-t bg-white">

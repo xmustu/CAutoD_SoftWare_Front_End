@@ -22,7 +22,7 @@ import { inferMessageType, extractUniqueImages, safeParseMetadata } from '@/util
 
 const UserMessage = ({ content }) => (
   <div className="flex justify-end my-4">
-    <div className="bg-purple-600 text-white rounded-lg p-3 max-w-lg break-words">
+    <div className="bg-purple-600 text-white rounded-lg p-3 max-w-lg break-words select-text">
       {content}
     </div>
   </div>
@@ -501,6 +501,7 @@ const GeneralMessageView = ({ content, imagesToDisplay, onImageClick, getFileUrl
 // -----------------------------------------------------------------------------
 const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesExtracted }) => {
     const { content: rawContent, parts, metadata: rawMetadata, suggested_questions, task_type } = message;
+    const [isMessageCopied, setIsMessageCopied] = useState(false);
 
     const cleanContent = useMemo(() => {
         if (!rawContent) return '';
@@ -579,6 +580,36 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
         if (codeToCopy) navigator.clipboard.writeText(codeToCopy);
     };
 
+    const copyText = async (text) => {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+    };
+
+    const handleCopyMessage = async () => {
+        const textToCopy = cleanContent.trim();
+        if (!textToCopy) return;
+
+        try {
+            await copyText(textToCopy);
+            setIsMessageCopied(true);
+            setTimeout(() => setIsMessageCopied(false), 1800);
+        } catch (error) {
+            console.error('Copy message failed:', error);
+        }
+    };
+
     const handleImageClick = (url, alt) => {
         setPreviewImageUrl(url);
         setPreviewImageAlt(alt);
@@ -609,9 +640,23 @@ const AiMessage = ({ message, onParametersExtracted, onQuestionClick, onImagesEx
 
     return (
         <>
-            <div className="flex items-start my-4 w-full">
+            <div className="flex items-start my-4 w-full select-text">
                 <Avatar className="mr-4"><AvatarFallback>AI</AvatarFallback></Avatar>
-                <div className="bg-gray-100 rounded-lg p-3 w-full max-w-4xl overflow-hidden">
+                <div
+                    data-testid="ai-message-card"
+                    className="relative bg-gray-100 rounded-lg p-3 pr-10 w-full max-w-4xl overflow-hidden select-text"
+                >
+                    {cleanContent.trim() && (
+                        <button
+                            type="button"
+                            aria-label="复制消息"
+                            title="复制消息"
+                            onClick={handleCopyMessage}
+                            className="absolute top-2 right-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-500 shadow-sm hover:bg-white hover:text-gray-700 transition-colors select-none"
+                        >
+                            {isMessageCopied ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Clipboard className="h-4 w-4" />}
+                        </button>
+                    )}
                     {messageType === 'geometry' && (
                         <GeometryMessageView 
                             content={cleanContent}
@@ -700,7 +745,7 @@ const ConversationDisplay = ({
   }, [messages, filterTaskType]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 h-full">
+    <div data-testid="conversation-scroll" className="flex-1 overflow-y-auto p-8 h-full select-text">
       {displayMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <p>暂无相关历史记录</p>
