@@ -54,6 +54,120 @@ describe('ConversationDisplay Copy Support', () => {
     });
 });
 
+describe('ConversationDisplay Auto Follow', () => {
+    beforeEach(() => {
+        HTMLElement.prototype.scrollIntoView = vi.fn();
+    });
+
+    it('scrolls to the newest message when the user is already near the bottom', async () => {
+        const { rerender } = render(
+            <ConversationDisplay
+                messages={[{ id: 40, role: 'assistant', content: 'streaming answer', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        HTMLElement.prototype.scrollIntoView.mockClear();
+
+        rerender(
+            <ConversationDisplay
+                messages={[{ id: 40, role: 'assistant', content: 'streaming answer\nnext line', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        await waitFor(() => {
+            expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'end', behavior: 'auto' });
+        });
+    });
+
+    it('pauses auto-follow when the user scrolls up and resumes near the bottom', async () => {
+        const { rerender } = render(
+            <ConversationDisplay
+                messages={[{ id: 41, role: 'assistant', content: 'line 1', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        const scrollArea = screen.getByTestId('conversation-scroll');
+        Object.defineProperty(scrollArea, 'scrollHeight', { configurable: true, value: 1000 });
+        Object.defineProperty(scrollArea, 'clientHeight', { configurable: true, value: 300 });
+        Object.defineProperty(scrollArea, 'scrollTop', { configurable: true, writable: true, value: 100 });
+
+        fireEvent.scroll(scrollArea);
+        HTMLElement.prototype.scrollIntoView.mockClear();
+
+        rerender(
+            <ConversationDisplay
+                messages={[{ id: 41, role: 'assistant', content: 'line 1\nline 2', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+
+        scrollArea.scrollTop = 720;
+        fireEvent.scroll(scrollArea);
+
+        rerender(
+            <ConversationDisplay
+                messages={[{ id: 41, role: 'assistant', content: 'line 1\nline 2\nline 3', task_type: 'general' }]}
+                isLoading={false}
+            />
+        );
+
+        await waitFor(() => {
+            expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'end', behavior: 'auto' });
+        });
+    });
+
+    it('does not force the optimization log to the bottom while the user is reading older logs', async () => {
+        const { rerender } = render(
+            <ConversationDisplay
+                messages={[{
+                    id: 42,
+                    role: 'assistant',
+                    task_type: 'optimize',
+                    content: '=== 开始优化 ===\n迭代 1\n迭代 2',
+                }]}
+                isLoading={false}
+                filterTaskType="optimize"
+            />
+        );
+
+        const conversationScroll = screen.getByTestId('conversation-scroll');
+        Object.defineProperty(conversationScroll, 'scrollHeight', { configurable: true, value: 1000 });
+        Object.defineProperty(conversationScroll, 'clientHeight', { configurable: true, value: 300 });
+        Object.defineProperty(conversationScroll, 'scrollTop', { configurable: true, writable: true, value: 100 });
+        fireEvent.scroll(conversationScroll);
+
+        const logScroll = screen.getByTestId('optimization-log-scroll');
+        Object.defineProperty(logScroll, 'scrollHeight', { configurable: true, value: 1000 });
+        Object.defineProperty(logScroll, 'clientHeight', { configurable: true, value: 300 });
+        Object.defineProperty(logScroll, 'scrollTop', { configurable: true, writable: true, value: 120 });
+        fireEvent.scroll(logScroll);
+
+        HTMLElement.prototype.scrollIntoView.mockClear();
+
+        rerender(
+            <ConversationDisplay
+                messages={[{
+                    id: 42,
+                    role: 'assistant',
+                    task_type: 'optimize',
+                    content: '=== 开始优化 ===\n迭代 1\n迭代 2\n迭代 3',
+                }]}
+                isLoading={false}
+                filterTaskType="optimize"
+            />
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+    });
+});
+
 describe('ConversationDisplay Message Filtering', () => {
     const mockMessages = [
         { id: 1, role: 'user', content: 'hello' },

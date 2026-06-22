@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import ProtectedImage from './ProtectedImage'; 
@@ -15,6 +15,8 @@ import SuggestedQuestions from './SuggestedQuestions';
 import ThreeDViewer from './ThreeDViewer';
 import useConversationStore from '@/store/conversationStore';
 import { inferMessageType, extractUniqueImages, safeParseMetadata } from '@/utils/messageUtils';
+
+const AUTO_FOLLOW_THRESHOLD = 80;
 
 // ==============================================================================
 // 1. 基础辅助组件
@@ -62,6 +64,8 @@ const CodeBlock = ({ language, children }) => {
 const OptimizationLogRenderer = ({ content }) => {
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
+  const shouldAutoFollowRef = useRef(true);
+  const rafRef = useRef(null);
 
   const processedLines = useMemo(() => {
     if (!content) return [];
@@ -108,10 +112,32 @@ const OptimizationLogRenderer = ({ content }) => {
     }).filter(Boolean);
   }, [content]);
 
+  const updateAutoFollowPreference = useCallback(() => {
+      const container = scrollRef.current;
+      if (!container) return;
+
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      shouldAutoFollowRef.current = distanceFromBottom <= AUTO_FOLLOW_THRESHOLD;
+  }, []);
+
   useEffect(() => {
-      if (bottomRef.current) {
-          bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+      if (!shouldAutoFollowRef.current) return undefined;
+
+      if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
       }
+
+      rafRef.current = requestAnimationFrame(() => {
+          bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+          rafRef.current = null;
+      });
+
+      return () => {
+          if (rafRef.current) {
+              cancelAnimationFrame(rafRef.current);
+              rafRef.current = null;
+          }
+      };
   }, [processedLines.length, content]);
 
   return (
@@ -123,7 +149,12 @@ const OptimizationLogRenderer = ({ content }) => {
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="h-80 overflow-y-auto p-4 font-mono text-sm leading-relaxed space-y-1 bg-white">
+        <div
+          ref={scrollRef}
+          data-testid="optimization-log-scroll"
+          onScroll={updateAutoFollowPreference}
+          className="h-80 overflow-y-auto p-4 font-mono text-sm leading-relaxed space-y-1 bg-white"
+        >
             {processedLines.length === 0 ? (
                 <div className="text-gray-400 italic text-center py-4">日志等待中...</div>
             ) : (
@@ -723,7 +754,10 @@ const ConversationDisplay = ({
     onImagesExtracted,
     filterTaskType // 'geometry' | 'optimize'
 }) => {
-  if (isLoading) return <div className="flex items-center justify-center h-full">正在加载对话记录...</div>;
+  const scrollContainerRef = useRef(null);
+  const bottomRef = useRef(null);
+  const shouldAutoFollowRef = useRef(true);
+  const rafRef = useRef(null);
 
   const displayMessages = React.useMemo(() => {
     // 如果没有传入过滤类型，显示所有消息 (兼容旧逻辑)
@@ -744,8 +778,54 @@ const ConversationDisplay = ({
     });
   }, [messages, filterTaskType]);
 
+  const lastMessage = displayMessages[displayMessages.length - 1];
+  const lastMessageContentLength = lastMessage?.content?.length || 0;
+  const lastMessagePartsLength = lastMessage?.parts?.length || 0;
+  const lastMessageMetadataKey = lastMessage?.metadata ? JSON.stringify(lastMessage.metadata) : '';
+
+  const updateAutoFollowPreference = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoFollowRef.current = distanceFromBottom <= AUTO_FOLLOW_THRESHOLD;
+  }, []);
+
+  useEffect(() => {
+    if (!shouldAutoFollowRef.current) return undefined;
+
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    rafRef.current = requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
+      rafRef.current = null;
+    });
+
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [
+    displayMessages.length,
+    lastMessage?.id,
+    lastMessageContentLength,
+    lastMessagePartsLength,
+    lastMessageMetadataKey,
+  ]);
+
+  if (isLoading) return <div className="flex items-center justify-center h-full">正在加载对话记录...</div>;
+
   return (
-    <div data-testid="conversation-scroll" className="flex-1 overflow-y-auto p-8 h-full select-text">
+    <div
+      ref={scrollContainerRef}
+      data-testid="conversation-scroll"
+      onScroll={updateAutoFollowPreference}
+      className="flex-1 overflow-y-auto p-8 h-full select-text"
+    >
       {displayMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <p>暂无相关历史记录</p>
@@ -755,7 +835,7 @@ const ConversationDisplay = ({
             msg.role === 'user' ? (
               <UserMessage key={msg.id || index} content={msg.content} />
             ) : (
-              <React.Fragment key={`${msg.id || index}-${(msg.content || '').length}`}>
+              <React.Fragment key={msg.id || `assistant-${index}`}>
                   <AiMessage 
                       message={msg} 
                       onParametersExtracted={onParametersExtracted}
@@ -766,6 +846,7 @@ const ConversationDisplay = ({
             )
           )
       )}
+      <div ref={bottomRef} data-testid="conversation-bottom" />
     </div>
   );
 };

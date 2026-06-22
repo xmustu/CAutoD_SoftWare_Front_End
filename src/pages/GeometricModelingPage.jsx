@@ -29,30 +29,39 @@ const GEOMETRY_BOT_ID = 'ep-m-20251211113938-sr72q';
 // ----------------------------------------------------------------------
 
 const FloatingProgress = ({ metadata, isStreaming, content }) => {
+    const safeMetadata = metadata || {};
+    const stage = safeMetadata.stage || safeMetadata.task_status;
+    const completedStages = ['completed', 'preview_ready'];
+    const previewStages = [...completedStages, 'rendering_preview'];
+    const modelStages = [...previewStages, 'model_ready'];
+    const codeStages = [...modelStages, 'building_model', 'code_ready'];
     const hasCodeContent = content && content.length > 50 && (
         content.includes('import cadquery') ||
         content.includes('import bpy') ||
         content.includes('```python') ||
         content.includes('def build_')
     );
-    const hasCodeFile = !!metadata?.code_file;
-    const hasModelFile = !!metadata?.stl_file;
-    const hasPreviewImage = !!metadata?.preview_image;
+    const hasCodeFile = !!safeMetadata.code_file;
+    const hasModelFile = !!safeMetadata.stl_file || !!safeMetadata.cad_file;
+    const hasPreviewImage = !!safeMetadata.preview_image;
+    const isCodeReady = hasCodeFile || hasCodeContent || codeStages.includes(stage);
+    const isModelReady = hasModelFile || modelStages.includes(stage);
+    const isPreviewReady = hasPreviewImage || completedStages.includes(stage);
 
-    if (!hasCodeContent && !isStreaming && !hasCodeFile) return null;
+    if (!isCodeReady && !isStreaming && !isModelReady && !isPreviewReady) return null;
 
     const steps = [
         {
             label: '生成代码',
-            done: hasCodeFile || (hasCodeContent && !isStreaming)
+            done: isCodeReady
         },
         {
             label: '构建模型',
-            done: hasModelFile && !isStreaming
+            done: isModelReady
         },
         {
             label: '渲染预览',
-            done: hasPreviewImage && !isStreaming
+            done: isPreviewReady
         },
     ];
 
@@ -269,6 +278,9 @@ const GeometricModelingPage = () => {
     const sseRef = useRef(null);
     // 💥 当前任务ID引用 — 用于 SSE 回调守卫
     const currentTaskIdRef = useRef(null);
+    const currentStlUrlRef = useRef(null);
+    const historyRestoreTimeoutRef = useRef(null);
+    const resetCameraTimeoutRef = useRef(null);
 
     const [executionTime, setExecutionTime] = useState(0);
     // 3D 交互状态
@@ -294,15 +306,20 @@ const GeometricModelingPage = () => {
     // 💥 从任务列表跳转时自动加载历史对话
     useEffect(() => {
         if (location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId) {
+            let isCancelled = false;
             devLog('🔄 GeometricModelingPage: 从任务列表跳转, 加载历史对话:', location.state);
             setIsLoadingFromTaskList(true);
             const { taskId, conversationId } = location.state;
             fetchMessagesForTask(taskId, conversationId).then(() => {
-                setIsLoadingFromTaskList(false);
+                if (!isCancelled) setIsLoadingFromTaskList(false);
             }).catch(() => {
-                setIsLoadingFromTaskList(false);
+                if (!isCancelled) setIsLoadingFromTaskList(false);
             });
             window.history.replaceState({}, document.title);
+
+            return () => {
+                isCancelled = true;
+            };
         }
     }, [location, fetchMessagesForTask]);
 
@@ -319,6 +336,18 @@ const GeometricModelingPage = () => {
                 sseRef.current = null;
             }
             currentTaskIdRef.current = null;
+            if (historyRestoreTimeoutRef.current) {
+                clearTimeout(historyRestoreTimeoutRef.current);
+                historyRestoreTimeoutRef.current = null;
+            }
+            if (resetCameraTimeoutRef.current) {
+                clearTimeout(resetCameraTimeoutRef.current);
+                resetCameraTimeoutRef.current = null;
+            }
+            if (currentStlUrlRef.current) {
+                URL.revokeObjectURL(currentStlUrlRef.current);
+                currentStlUrlRef.current = null;
+            }
         };
     }, []);
 
@@ -330,7 +359,8 @@ const GeometricModelingPage = () => {
             const blob = await downloadFileAPI(activeTaskId, activeConversationId, fileName);
             if (blob) {
                 const blobUrl = URL.createObjectURL(blob);
-                if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
+                if (currentStlUrlRef.current) URL.revokeObjectURL(currentStlUrlRef.current);
+                currentStlUrlRef.current = blobUrl;
                 setCurrentStlUrl(blobUrl);
                 setModelParts(['Model']);
                 setPartVisibility({ 'Model': true });
@@ -364,7 +394,6 @@ const GeometricModelingPage = () => {
             setLastAiContent(lastAiMsg.content);
             setLatestMetadata(lastAiMsg.metadata || {});
 
-            const isComplete = (lastAiMsg.metadata?.stl_file || lastAiMsg.metadata?.cad_file) && lastAiMsg.metadata?.preview_image && !isStreaming;
             setIsGeometryTaskStreaming(lastAiMsg.task_type === 'geometry' && isStreaming);
 
             const stlFile = lastAiMsg.metadata?.stl_file;
@@ -374,13 +403,6 @@ const GeometricModelingPage = () => {
             }
         }
     }, [messages, activeTaskId, activeConversationId, isStreaming]);
-
-    // 清理 URL 对象
-    useEffect(() => {
-        return () => {
-            if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
-        };
-    }, []);
 
     // 从历史记录恢复状态
     useEffect(() => {
@@ -400,7 +422,13 @@ const GeometricModelingPage = () => {
 
                 if (fileToLoad && fileToLoad !== loadedFileRef.current && activeTaskId && activeConversationId) {
                     devLog("正在从历史记录恢复模型:", fileToLoad);
-                    setTimeout(() => handleShowModel(fileToLoad), 100);
+                    if (historyRestoreTimeoutRef.current) {
+                        clearTimeout(historyRestoreTimeoutRef.current);
+                    }
+                    historyRestoreTimeoutRef.current = setTimeout(() => {
+                        historyRestoreTimeoutRef.current = null;
+                        handleShowModel(fileToLoad);
+                    }, 100);
                 }
             }
         }
@@ -469,8 +497,14 @@ const GeometricModelingPage = () => {
     const handleResetCamera = () => {
         if (currentStlUrl) {
             const temp = currentStlUrl;
+            if (resetCameraTimeoutRef.current) {
+                clearTimeout(resetCameraTimeoutRef.current);
+            }
             setCurrentStlUrl(null);
-            setTimeout(() => setCurrentStlUrl(temp), 10);
+            resetCameraTimeoutRef.current = setTimeout(() => {
+                resetCameraTimeoutRef.current = null;
+                setCurrentStlUrl(temp);
+            }, 10);
         }
     };
 
@@ -488,7 +522,18 @@ const GeometricModelingPage = () => {
         setIsCancellingTask(false);
         setRunningTaskId(null);
         startNewConversation();
-        if (currentStlUrl) URL.revokeObjectURL(currentStlUrl);
+        if (historyRestoreTimeoutRef.current) {
+            clearTimeout(historyRestoreTimeoutRef.current);
+            historyRestoreTimeoutRef.current = null;
+        }
+        if (resetCameraTimeoutRef.current) {
+            clearTimeout(resetCameraTimeoutRef.current);
+            resetCameraTimeoutRef.current = null;
+        }
+        if (currentStlUrlRef.current) {
+            URL.revokeObjectURL(currentStlUrlRef.current);
+            currentStlUrlRef.current = null;
+        }
         setCurrentStlUrl(null);
         setLatestMetadata(null);
         setLastAiContent("");

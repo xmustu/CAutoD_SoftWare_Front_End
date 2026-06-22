@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
@@ -419,6 +419,7 @@ const DesignOptimizationPage = () => {
     createTask,
     updateLastAiMessage, // 使用新的统一 action
     fetchMessagesForTask, // 💥 新增: 用于加载历史对话
+    startNewConversation,
   } = useConversationStore();
   const [isTaskRunning, setIsTaskRunning] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -426,7 +427,7 @@ const DesignOptimizationPage = () => {
   const [optimizableParams, setOptimizableParams] = useState([]);
   const [paramRanges, setParamRanges] = useState({});
   const [uploadedFileUrl, setUploadedFileUrl] = useState(null);
-  const [eventSource, setEventSource] = useState(null);
+  const [, setEventSource] = useState(null);
   const [isSecondRoundCompleted, setIsSecondRoundCompleted] = useState(false);
   const [isQueueDialogOpen, setIsQueueDialogOpen] = useState(false);
   const [displayedImages, setDisplayedImages] = useState([]); // ✅ 必须保留，因为它被 handleImagesExtracted 使用
@@ -436,15 +437,63 @@ const DesignOptimizationPage = () => {
   const [runningTasks, setRunningTasks] = useState(0); // 运行中的任务数
   const [queuePosition, setQueuePosition] = useState(null); // <-- 修复 1：添加 queuePosition** 
   const [currentTaskId, setCurrentTaskId] = useState(null); // <-- 修复 2：添加 currentTaskId**
+  const eventSourceRef = useRef(null);
+  const currentTaskIdRef = useRef(null);
+  const currentRunIdRef = useRef(null);
   // 新增：控制参数配置模态框的状态
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [provider, setProvider] = useState('agent');
   // 💥 新增: 跟踪是否正在从任务列表加载历史对话
   const [isLoadingFromTaskList, setIsLoadingFromTaskList] = useState(false);
+  const isTaskListEntry = !!(location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId);
+
+  const closeActiveStream = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close?.();
+      eventSourceRef.current = null;
+    }
+    setEventSource(null);
+    currentTaskIdRef.current = null;
+    currentRunIdRef.current = null;
+  }, []);
+
+  const resetOptimizationLocalState = useCallback(() => {
+    closeActiveStream();
+    setIsTaskRunning(false);
+    setIsStreaming(false);
+    setSelectedFile(null);
+    setOptimizableParams([]);
+    setParamRanges({});
+    setUploadedFileUrl(null);
+    setIsSecondRoundCompleted(false);
+    setIsQueueDialogOpen(false);
+    setDisplayedImages([]);
+    setFormScreenshot([]);
+    setQueuePosition(null);
+    setCurrentTaskId(null);
+    setIsConfigModalOpen(false);
+  }, [closeActiveStream]);
+
+  useEffect(() => {
+    if (!isTaskListEntry) {
+      startNewConversation();
+      resetOptimizationLocalState();
+    }
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close?.();
+        eventSourceRef.current = null;
+      }
+      currentTaskIdRef.current = null;
+      currentRunIdRef.current = null;
+    };
+  }, []);
 
   // 💥 新增: 从任务列表跳转时自动加载历史对话
   useEffect(() => {
-    if (location.state?.fromTaskList && location.state?.taskId && location.state?.conversationId) {
+    if (isTaskListEntry) {
+      let isCancelled = false;
       devLog('🔄 从任务列表跳转,自动加载历史对话:', location.state);
 
       // **关键修复**: 立即设置loading状态,防止显示空白页面
@@ -453,13 +502,19 @@ const DesignOptimizationPage = () => {
       const { taskId, conversationId } = location.state;
       fetchMessagesForTask(taskId, conversationId).then(() => {
         // 加载完成后清除loading状态
-        setIsLoadingFromTaskList(false);
+        if (!isCancelled) setIsLoadingFromTaskList(false);
+      }).catch(() => {
+        if (!isCancelled) setIsLoadingFromTaskList(false);
       });
 
       // 清除 state,避免刷新页面时重复加载
       window.history.replaceState({}, document.title);
+
+      return () => {
+        isCancelled = true;
+      };
     }
-  }, [location, fetchMessagesForTask]);
+  }, [isTaskListEntry, location, fetchMessagesForTask]);
 
   // 轮询获取队列长度
   useEffect(() => {
@@ -469,10 +524,12 @@ const DesignOptimizationPage = () => {
     const ACTIVE_POLLING_INTERVAL = 10000; // 10 秒
 
     let timeoutId;
+    let isCancelled = false;
 
     const fetchQueueStatus = async () => {
       try {
         const res = await axios.get(`${import.meta.env.VITE_API_URL}/tasks/optimize/queue_length`);
+        if (isCancelled) return;
 
         const newQueueLength = res.data.length ?? 0;
         const newRunningTasks = res.data.running ?? 0;
@@ -488,6 +545,7 @@ const DesignOptimizationPage = () => {
         timeoutId = setTimeout(fetchQueueStatus, nextInterval);
 
       } catch (err) {
+        if (isCancelled) return;
         console.error("获取优化队列长度失败，下次尝试间隔 30 秒:", err);
         // 失败时，等待较长时间后再试，避免错误时加速轮询
         timeoutId = setTimeout(fetchQueueStatus, IDLE_POLLING_INTERVAL);
@@ -499,6 +557,7 @@ const DesignOptimizationPage = () => {
 
     // 清理函数：在组件卸载时清除定时器
     return () => {
+      isCancelled = true;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
@@ -590,6 +649,12 @@ const DesignOptimizationPage = () => {
 
   const handleStartOptimization = async () => {
     if (!selectedFile || isTaskRunning || !activeConversationId) return;
+    closeActiveStream();
+
+    const conversationIdForTask = activeConversationId;
+    const runId = `optimize-${Date.now()}-${Math.random()}`;
+    currentRunIdRef.current = runId;
+    const isCurrentRun = () => currentRunIdRef.current === runId;
     setFormScreenshot([]);
     setIsTaskRunning(true); // 任务开始，设置为true
     setIsStreaming(true); // 开始流式传输
@@ -605,14 +670,19 @@ const DesignOptimizationPage = () => {
     try {
       if (!taskIdToUse) {
         const newTask = await createTask({
-          conversation_id: activeConversationId,
+          conversation_id: conversationIdForTask,
           task_type: taskType,
           details: { query: query, fileName: selectedFile?.name }
         });
+        if (!isCurrentRun()) return;
         if (!newTask) throw new Error("Task creation failed");
         taskIdToUse = newTask.task_id;
       }
+      if (!isCurrentRun()) return;
+      currentTaskIdRef.current = taskIdToUse;
+      setCurrentTaskId(String(taskIdToUse));
     } catch (error) {
+      if (!isCurrentRun()) return;
       console.error("Failed to create task:", error);
       updateLastAiMessage({
         finalData: { answer: "抱歉，创建任务时出现错误。", metadata: {} },
@@ -625,7 +695,8 @@ const DesignOptimizationPage = () => {
     // 2. 上传文件，并附带会话和任务ID
     let fileUrl = null;
     try {
-      const uploadResponse = await uploadFileAPI(selectedFile, activeConversationId, taskIdToUse);
+      const uploadResponse = await uploadFileAPI(selectedFile, conversationIdForTask, taskIdToUse);
+      if (!isCurrentRun() || currentTaskIdRef.current !== taskIdToUse) return;
       if (uploadResponse && uploadResponse.path) {
         fileUrl = uploadResponse.path;
         setUploadedFileUrl(fileUrl); // 保存上传文件的URL
@@ -633,11 +704,15 @@ const DesignOptimizationPage = () => {
         throw new Error('File upload failed: Invalid response from server');
       }
     } catch (error) {
+      if (!isCurrentRun()) return;
       console.error("File upload failed:", error);
       updateLastAiMessage({
         finalData: { answer: "抱歉，文件上传失败。", metadata: {} },
       }, taskIdToUse);
+      setIsTaskRunning(false);
       setIsStreaming(false);
+      currentTaskIdRef.current = null;
+      currentRunIdRef.current = null;
       return;
     }
 
@@ -646,16 +721,17 @@ const DesignOptimizationPage = () => {
         task_type: taskType,
         query: query,
         file_url: fileUrl,
-        conversation_id: activeConversationId,
+        conversation_id: conversationIdForTask,
         task_id: taskIdToUse,
         provider: provider,
       };
 
-      executeTaskAPI({
+      const sseHandle = executeTaskAPI({
         ...requestData,
         response_mode: "streaming",
         onMessage: {
           text_chunk: (data) => {
+            if (!isCurrentRun() || currentTaskIdRef.current !== taskIdToUse) return;
             const textContent = data.text || data;
             if (textContent) {
               updateLastAiMessage({ textChunk: textContent }, taskIdToUse);
@@ -664,9 +740,11 @@ const DesignOptimizationPage = () => {
             }
           },
           image_chunk: (data) => {
+            if (!isCurrentRun() || currentTaskIdRef.current !== taskIdToUse) return;
             updateLastAiMessage({ image: data }, taskIdToUse);
           },
           message_end: (data) => {
+            if (!isCurrentRun() || currentTaskIdRef.current !== taskIdToUse) return;
             updateLastAiMessage({ finalData: data }, taskIdToUse);
             setIsStreaming(false); // 流式传输结束
 
@@ -707,6 +785,7 @@ const DesignOptimizationPage = () => {
           },
         },
         onError: (error) => {
+          if (!isCurrentRun() || currentTaskIdRef.current !== taskIdToUse) return;
           console.error("SSE error:", error);
           updateLastAiMessage({
             finalData: {
@@ -716,16 +795,28 @@ const DesignOptimizationPage = () => {
           }, taskIdToUse);
           setIsTaskRunning(false); // 任务失败，设置为false
           setIsStreaming(false);
+          currentTaskIdRef.current = null;
+          currentRunIdRef.current = null;
+          eventSourceRef.current = null;
+          setEventSource(null);
         },
         onClose: () => {
+          if (!isCurrentRun() || currentTaskIdRef.current !== taskIdToUse) return;
           setIsTaskRunning(false); // 任务完成，设置为false
           setIsStreaming(false);
-          // if (eventSource) eventSource.close(); //  关闭 SSE 连接
+          currentTaskIdRef.current = null;
+          currentRunIdRef.current = null;
+          eventSourceRef.current = null;
+          setEventSource(null);
         },
       });
+      eventSourceRef.current = sseHandle;
+      setEventSource(sseHandle);
 
     } catch (error) {
+      if (!isCurrentRun()) return;
       console.error("Failed to start optimization task:", error);
+      if (currentTaskIdRef.current !== taskIdToUse) return;
       updateLastAiMessage({
         finalData: {
           answer: "抱歉，启动优化任务时出现错误。",
@@ -734,6 +825,10 @@ const DesignOptimizationPage = () => {
       }, taskIdToUse);
       setIsTaskRunning(false); // 任务失败，设置为false
       setIsStreaming(false);
+      currentTaskIdRef.current = null;
+      currentRunIdRef.current = null;
+      eventSourceRef.current = null;
+      setEventSource(null);
     }
   };
 

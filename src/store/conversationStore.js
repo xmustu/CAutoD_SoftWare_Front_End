@@ -21,6 +21,7 @@ const useConversationStore = create((set, get) => ({
   error: null,
   isPolling: false, // 新增：轮询状态
   pollingIntervalId: null, // 新增：轮询定时器ID
+  messageContextVersion: 0,
 
   stopPolling: () => {
     const intervalId = get().pollingIntervalId;
@@ -138,7 +139,14 @@ const useConversationStore = create((set, get) => ({
   },
 
   setActiveConversationId: (conversationId) => {
-    set({ activeConversationId: conversationId, activeTaskId: null }); // 切换对话时清空任务
+    get().stopPolling();
+    set((state) => ({
+      activeConversationId: conversationId,
+      activeTaskId: null,
+      messages: [],
+      isLoadingMessages: false,
+      messageContextVersion: state.messageContextVersion + 1,
+    })); // 切换对话时清空任务
   },
 
   setActiveTaskId: (taskId) => set({ activeTaskId: taskId }),
@@ -146,11 +154,14 @@ const useConversationStore = create((set, get) => ({
   startNewConversation: () => {
     // 💥 停止可能正在运行的轮询
     get().stopPolling();
-    set({
+    set((state) => ({
       activeConversationId: null,
       activeTaskId: null,
       messages: [],
-    });
+      isLoadingMessages: false,
+      error: null,
+      messageContextVersion: state.messageContextVersion + 1,
+    }));
   },
 
   ensureConversation: async (title = "新对话") => {
@@ -158,6 +169,8 @@ const useConversationStore = create((set, get) => ({
     if (activeId) {
       return activeId;
     }
+
+    const requestContextVersion = get().messageContextVersion;
 
     // 1. 前端生成临时ID
     const tempId = `temp-${Date.now()}`;
@@ -169,11 +182,21 @@ const useConversationStore = create((set, get) => ({
         conversation_id: tempId,
       });
 
+      if (get().messageContextVersion !== requestContextVersion) {
+        return null;
+      }
+
       // 3. 使用后端返回的数据更新store
-      set((state) => ({
-        conversations: [newConversation, ...state.conversations],
-        activeConversationId: newConversation.conversation_id,
-      }));
+      set((state) => {
+        if (state.messageContextVersion !== requestContextVersion) {
+          return state;
+        }
+
+        return {
+          conversations: [newConversation, ...state.conversations],
+          activeConversationId: newConversation.conversation_id,
+        };
+      });
 
       return newConversation.conversation_id;
     } catch (error) {
@@ -184,18 +207,31 @@ const useConversationStore = create((set, get) => ({
   },
 
   createTask: async (taskData) => {
+    const requestContextVersion = get().messageContextVersion;
+
     try {
       const newTask = await createTaskAPI(taskData);
-      set((state) => ({
-        tasks: {
-          ...state.tasks,
-          [taskData.conversation_id]: [
-            ...(state.tasks[taskData.conversation_id] || []),
-            newTask,
-          ],
-        },
-        activeTaskId: newTask.task_id,
-      }));
+
+      if (get().messageContextVersion !== requestContextVersion) {
+        return null;
+      }
+
+      set((state) => {
+        if (state.messageContextVersion !== requestContextVersion) {
+          return state;
+        }
+
+        return {
+          tasks: {
+            ...state.tasks,
+            [taskData.conversation_id]: [
+              ...(state.tasks[taskData.conversation_id] || []),
+              newTask,
+            ],
+          },
+          activeTaskId: newTask.task_id,
+        };
+      });
       return newTask;
     } catch (error) {
       console.error(
@@ -244,19 +280,53 @@ const useConversationStore = create((set, get) => ({
 
     // 1. 停止任何可能正在进行的轮询
     get().stopPolling();
-    set({ isLoadingMessages: true, error: null });
+
+    const requestContextVersion = get().messageContextVersion + 1;
+
+    set({
+      activeTaskId: taskId,
+      activeConversationId: conversationId,
+      messages: [],
+      isLoadingMessages: true,
+      error: null,
+      messageContextVersion: requestContextVersion,
+    });
+
+    const isCurrentMessageContext = () => {
+      const state = get();
+      return (
+        state.messageContextVersion === requestContextVersion &&
+        state.activeTaskId === taskId &&
+        state.activeConversationId === conversationId
+      );
+    };
 
     const fetchAndUpdate = async () => {
       try {
         const response = await getTaskHistoryAPI(taskId);
+
+        if (!isCurrentMessageContext()) {
+          return false;
+        }
+
         // 兼容新版分页格式(items)和旧版格式(message)
         const messages = response.items || response.message || [];
 
-        set({
-          messages: messages,
-          activeTaskId: taskId,
-          activeConversationId: conversationId,
-          isLoadingMessages: false, // 仅在第一次加载时设置为false
+        set((state) => {
+          if (
+            state.messageContextVersion !== requestContextVersion ||
+            state.activeTaskId !== taskId ||
+            state.activeConversationId !== conversationId
+          ) {
+            return state;
+          }
+
+          return {
+            messages: messages,
+            activeTaskId: taskId,
+            activeConversationId: conversationId,
+            isLoadingMessages: false, // 仅在第一次加载时设置为false
+          };
         });
 
         // 2. 检查是否需要启动轮询
@@ -271,6 +341,10 @@ const useConversationStore = create((set, get) => ({
         }
         return false; // 返回 false 表示不需要轮询
       } catch (error) {
+        if (!isCurrentMessageContext()) {
+          return false;
+        }
+
         console.error(`Failed to fetch messages for task ${taskId}:`, error);
         set({ error, isLoadingMessages: false });
         get().stopPolling(); // 出错时停止轮询
@@ -280,15 +354,19 @@ const useConversationStore = create((set, get) => ({
 
     const shouldStartPolling = await fetchAndUpdate();
 
-    if (shouldStartPolling) {
+    if (shouldStartPolling && isCurrentMessageContext()) {
       set({ isPolling: true });
       const intervalId = setInterval(async () => {
         const shouldContinue = await fetchAndUpdate();
-        if (!shouldContinue) {
+        if (!shouldContinue && isCurrentMessageContext()) {
           get().stopPolling(); // 如果不再需要轮询，则停止
         }
       }, 2000); // 设置2秒的轮询间隔
-      set({ pollingIntervalId: intervalId });
+      if (isCurrentMessageContext()) {
+        set({ pollingIntervalId: intervalId });
+      } else {
+        clearInterval(intervalId);
+      }
     }
   },
 
